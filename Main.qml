@@ -542,8 +542,8 @@ ApplicationWindow {
                 id: formId,
                 fishery_office: officeField.text,
                 email: officeEmailField.text,
-                port_of_departure: departureField.currentText,
-                port_of_landing: landingField.currentText,
+                port_of_departure: departureField.editText,
+                port_of_landing: landingField.editText,
                 pln: plnField.text,
                 vessel_name: vesselField.text,
                 owner_master: ownerField.text,
@@ -557,21 +557,31 @@ ApplicationWindow {
 
         Flickable {
             width: parent.width
-            height: Math.min(parent.height, 500)
+            implicitHeight: Math.min(formFields.implicitHeight, window.height - 200)
             contentHeight: formFields.implicitHeight
             clip: true
             ColumnLayout {
                 id: formFields
                 width: parent.width
+                Label { text: qsTr("Fishery office"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: officeField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office") }
+                Label { text: qsTr("Fishery office email"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: officeEmailField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office email") }
+                Label { text: qsTr("Vessel PLN"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: plnField; Layout.fillWidth: true; placeholderText: qsTr("Vessel PLN") }
+                Label { text: qsTr("Vessel name"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: vesselField; Layout.fillWidth: true; placeholderText: qsTr("Vessel name") }
+                Label { text: qsTr("Owner/Master"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: ownerField; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master") }
+                Label { text: qsTr("Address"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: addressField; Layout.fillWidth: true; placeholderText: qsTr("Address") }
-                ComboBox { id: departureField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1 }
-                ComboBox { id: landingField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1 }
+                Label { text: qsTr("Port of departure"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: departureField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("Port of landing"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: landingField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("Total pots fishing"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: potsField; Layout.fillWidth: true; placeholderText: qsTr("Total pots fishing"); inputMethodHints: Qt.ImhDigitsOnly }
+                Label { text: qsTr("Comments and buyers information"); font.bold: true; Layout.topMargin: 4 }
                 TextArea { id: commentsField; Layout.fillWidth: true; placeholderText: qsTr("Comments and buyers information"); wrapMode: TextEdit.Wrap }
             }
         }
@@ -690,11 +700,11 @@ ApplicationWindow {
                 latitude: Number(rowLatitude.text) || 0,
                 longitude: Number(rowLongitude.text) || 0,
                 ices_area: rowIces.text,
-                gear: rowGear.currentText,
+                gear: rowGear.editText,
                 mesh_size: Number(rowMesh.text) || 0,
-                species: rowSpecies.currentText,
-                state: rowState.currentText,
-                presentation: rowPresentation.currentText,
+                species: rowSpecies.editText,
+                state: rowState.editText,
+                presentation: rowPresentation.editText,
                 weight: Number(rowWeight.text) || 0,
                 dis: rowDis.checked,
                 bms: rowBms.checked,
@@ -708,26 +718,39 @@ ApplicationWindow {
 
         Flickable {
             width: parent.width
-            height: Math.min(parent.height, 520)
+            implicitHeight: Math.min(rowFields.implicitHeight, window.height - 200)
             contentHeight: rowFields.implicitHeight
             clip: true
             ColumnLayout {
                 id: rowFields
                 width: parent.width
+                Label { text: qsTr("Fishing date (YYYY-MM-DD)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowDate; Layout.fillWidth: true; placeholderText: qsTr("Fishing date (YYYY-MM-DD)") }
+                Label { text: qsTr("Latitude (decimal degrees)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowLatitude; Layout.fillWidth: true; placeholderText: qsTr("Latitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                Label { text: qsTr("Longitude (decimal degrees)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowLongitude; Layout.fillWidth: true; placeholderText: qsTr("Longitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                Label { text: qsTr("ICES area"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowIces; Layout.fillWidth: true; placeholderText: qsTr("ICES area") }
-                ComboBox { id: rowGear; Layout.fillWidth: true; editable: true; model: appStore.gears; currentIndex: -1 }
+                Label { text: qsTr("Gear"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: rowGear; Layout.fillWidth: true; editable: true; model: appStore.gears; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("Mesh size (mm)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowMesh; Layout.fillWidth: true; placeholderText: qsTr("Mesh size (mm)"); inputMethodHints: Qt.ImhDigitsOnly }
-                ComboBox { id: rowSpecies; Layout.fillWidth: true; editable: true; model: appStore.species; currentIndex: -1 }
-                ComboBox { id: rowState; Layout.fillWidth: true; editable: true; model: appStore.states; currentIndex: -1 }
-                ComboBox { id: rowPresentation; Layout.fillWidth: true; editable: true; model: appStore.presentations; currentIndex: -1 }
+                Label { text: qsTr("Species"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: rowSpecies; Layout.fillWidth: true; editable: true; model: appStore.species; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("State"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: rowState; Layout.fillWidth: true; editable: true; model: appStore.states; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("Presentation"); font.bold: true; Layout.topMargin: 4 }
+                ComboBox { id: rowPresentation; Layout.fillWidth: true; editable: true; model: appStore.presentations; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                Label { text: qsTr("Weight (kg)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowWeight; Layout.fillWidth: true; placeholderText: qsTr("Weight (kg)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 CheckBox { id: rowDis; text: qsTr("DIS") }
                 CheckBox { id: rowBms; text: qsTr("BMS") }
+                Label { text: qsTr("Number of pots hauled"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowPots; Layout.fillWidth: true; placeholderText: qsTr("Number of pots hauled"); inputMethodHints: Qt.ImhDigitsOnly }
+                Label { text: qsTr("Landing/discard date (YYYY-MM-DD)"); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowLanding; Layout.fillWidth: true; placeholderText: qsTr("Landing/discard date (YYYY-MM-DD)") }
+                Label { text: qsTr("Transporter registration etc."); font.bold: true; Layout.topMargin: 4 }
                 TextField { id: rowTransporter; Layout.fillWidth: true; placeholderText: qsTr("Transporter registration etc.") }
             }
         }

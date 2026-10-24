@@ -8,6 +8,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("qtSIFIDS"));
     app.setOrganizationName(QStringLiteral("StAResComp"));
+    app.setDesktopFileName(QStringLiteral("qtSIFIDS"));
 
     QQmlApplicationEngine engine;
     engine.loadFromModule(QStringLiteral("Sifids"), QStringLiteral("Main"));
