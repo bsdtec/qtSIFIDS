@@ -20,6 +20,26 @@ cmake --build build
 
 Run the `qtSIFIDS` executable from the build output.
 
+### Android
+
+Install the Qt 6.11 Android kit for your target ABI (e.g. `android_arm64_v8a`),
+the desktop Qt kit of the same version, Android SDK platform 35 and build-tools,
+NDK (the revision recommended by your Qt version) and JDK 17.
+
+```sh
+export ANDROID_SDK_ROOT=$HOME/Android/Sdk
+export ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/<version>
+~/Qt/6.11.0/android_arm64_v8a/bin/qt-cmake -S . -B build-android \
+    -DQT_HOST_PATH=$HOME/Qt/6.11.0/gcc_64 \
+    -DANDROID_SDK_ROOT=$ANDROID_SDK_ROOT -DANDROID_NDK_ROOT=$ANDROID_NDK_ROOT
+cmake --build build-android --target apk
+```
+
+The APK is written under `build-android/android-build/build/outputs/apk/`.
+Use `--target aab` for a Play Store bundle. Manifest and permissions (internet,
+fine/coarse location) are in `android/AndroidManifest.xml`; the app requests
+location permission at runtime when tracking is first enabled.
+
 ## Implemented so far
 
 - QML screens for map/track history, FISH1 forms and rows, observations, and

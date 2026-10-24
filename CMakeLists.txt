@@ -42,6 +42,16 @@ qt_add_qml_module(qtSIFIDS
 
 target_include_directories(qtSIFIDS PRIVATE src)
 
+if(ANDROID)
+    set_target_properties(qtSIFIDS PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
+        QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
+        QT_ANDROID_VERSION_CODE 1
+        QT_ANDROID_MIN_SDK_VERSION 28
+        QT_ANDROID_TARGET_SDK_VERSION 35
+    )
+endif()
+
 target_link_libraries(qtSIFIDS PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -59,6 +69,7 @@ include(GNUInstallDirs)
 install(TARGETS qtSIFIDS
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 include(CTest)

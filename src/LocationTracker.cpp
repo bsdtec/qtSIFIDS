@@ -1,7 +1,9 @@
 #include "LocationTracker.h"
 
 #include <QGeoPositionInfo>
+#include <QCoreApplication>
 #include <QGeoPositionInfoSource>
+#include <QLocationPermission>
 #include <QVariant>
 
 LocationTracker::LocationTracker(QObject *parent)
@@ -41,6 +43,27 @@ void LocationTracker::setTracking(bool tracking)
     if (!m_source && tracking) {
         setStatus(tr("No location provider is available on this device."));
         return;
+    }
+
+    if (tracking) {
+        QLocationPermission permission;
+        permission.setAccuracy(QLocationPermission::Precise);
+        switch (qApp->checkPermission(permission)) {
+        case Qt::PermissionStatus::Undetermined:
+            qApp->requestPermission(permission, this, [this](const QPermission &result) {
+                if (result.status() == Qt::PermissionStatus::Granted)
+                    setTracking(true);
+                else
+                    setStatus(tr("Location permission was denied."));
+            });
+            setStatus(tr("Waiting for location permission…"));
+            return;
+        case Qt::PermissionStatus::Denied:
+            setStatus(tr("Location permission was denied."));
+            return;
+        case Qt::PermissionStatus::Granted:
+            break;
+        }
     }
 
     m_tracking = tracking;
