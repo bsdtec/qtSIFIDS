@@ -19,6 +19,9 @@ ApplicationWindow {
     title: qsTr("SIFIDS")
     color: "#f4f6f5"
 
+    // The window extends under Android's system bars but contentItem does not, so size dialogs from it.
+    readonly property real dialogMaxHeight: contentItem.height - 24
+
     AppStore {
         id: appStore
     }
@@ -309,35 +312,43 @@ ApplicationWindow {
                                     rowsDialog.open()
                                 }
                             }
-                            Button {
-                                text: qsTr("Edit")
-                                onClicked: {
-                                    formDialog.formId = modelData.id
-                                    formDialog.formData = modelData
-                                    formDialog.open()
-                                }
-                            }
-                            Button {
-                                text: qsTr("CSV")
-                                onClicked: {
-                                    csvSaveDialog.exportingTrack = false
-                                    csvSaveDialog.formId = modelData.id
-                                    csvSaveDialog.currentFile = (modelData.pln || "FISH1") + ".csv"
-                                    csvSaveDialog.open()
-                                }
-                            }
-                            Button {
-                                text: qsTr("Upload")
-                                enabled: !appStore.uploading && appStore.consented
-                                onClicked: appStore.uploadFormCsv(
-                                               modelData.id,
-                                               appStore.settings().pln || modelData.pln || "")
-                            }
-                            Button {
-                                text: qsTr("Delete")
-                                onClicked: {
-                                    deleteFormDialog.formId = modelData.id
-                                    deleteFormDialog.open()
+                            ToolButton {
+                                text: "\u22EE"
+                                font.pixelSize: 24
+                                onClicked: formMenu.popup()
+                                Menu {
+                                    id: formMenu
+                                    MenuItem {
+                                        text: qsTr("Edit")
+                                        onTriggered: {
+                                            formDialog.formId = modelData.id
+                                            formDialog.formData = modelData
+                                            formDialog.open()
+                                        }
+                                    }
+                                    MenuItem {
+                                        text: qsTr("Export CSV")
+                                        onTriggered: {
+                                            csvSaveDialog.exportingTrack = false
+                                            csvSaveDialog.formId = modelData.id
+                                            csvSaveDialog.currentFile = (modelData.pln || "FISH1") + ".csv"
+                                            csvSaveDialog.open()
+                                        }
+                                    }
+                                    MenuItem {
+                                        text: qsTr("Upload")
+                                        enabled: !appStore.uploading && appStore.consented
+                                        onTriggered: appStore.uploadFormCsv(
+                                                         modelData.id,
+                                                         appStore.settings().pln || modelData.pln || "")
+                                    }
+                                    MenuItem {
+                                        text: qsTr("Delete")
+                                        onTriggered: {
+                                            deleteFormDialog.formId = modelData.id
+                                            deleteFormDialog.open()
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -550,6 +561,8 @@ ApplicationWindow {
         title: qsTr("Location tracking")
         standardButtons: Dialog.Close
         anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
         width: Math.min(parent.width - 24, 420)
 
         contentItem: ColumnLayout {
@@ -634,6 +647,9 @@ ApplicationWindow {
         title: formId ? qsTr("Edit FISH1 form") : qsTr("New FISH1 form")
         standardButtons: Dialog.Save | Dialog.Cancel
         anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
+        height: Math.min(implicitHeight, window.dialogMaxHeight)
         width: Math.min(parent.width - 32, 560)
 
         onOpened: {
@@ -670,7 +686,8 @@ ApplicationWindow {
 
         Flickable {
             width: parent.width
-            implicitHeight: Math.min(formFields.implicitHeight, window.height - 200)
+            height: parent.height
+            implicitHeight: formFields.implicitHeight
             contentHeight: formFields.implicitHeight
             clip: true
             ColumnLayout {
@@ -707,6 +724,8 @@ ApplicationWindow {
         title: qsTr("Delete this form and its rows?")
         standardButtons: Dialog.Yes | Dialog.No
         anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
         onAccepted: appStore.deleteForm(formId)
     }
 
@@ -717,7 +736,9 @@ ApplicationWindow {
         standardButtons: Dialog.Close
         anchors.centerIn: parent
         width: Math.min(parent.width - 24, 800)
-        height: Math.min(parent.height - 24, 650)
+        topMargin: 12
+        bottomMargin: 12
+        height: Math.min(window.dialogMaxHeight, 650)
 
         onOpened: currentFormRows = appStore.rowsForForm(activeFormId)
 
@@ -756,19 +777,27 @@ ApplicationWindow {
                                 .arg(modelData.longitude)
                             elide: Text.ElideRight
                         }
-                        Button {
-                            text: qsTr("Edit")
-                            onClicked: {
-                                rowDialog.rowId = modelData.id
-                                rowDialog.rowData = modelData
-                                rowDialog.open()
-                            }
-                        }
-                        Button {
-                            text: qsTr("Delete")
-                            onClicked: {
-                                appStore.deleteFormRow(modelData.id)
-                                currentFormRows = appStore.rowsForForm(activeFormId)
+                        ToolButton {
+                            text: "\u22EE"
+                            font.pixelSize: 24
+                            onClicked: rowMenu.popup()
+                            Menu {
+                                id: rowMenu
+                                MenuItem {
+                                    text: qsTr("Edit")
+                                    onTriggered: {
+                                        rowDialog.rowId = modelData.id
+                                        rowDialog.rowData = modelData
+                                        rowDialog.open()
+                                    }
+                                }
+                                MenuItem {
+                                    text: qsTr("Delete")
+                                    onTriggered: {
+                                        appStore.deleteFormRow(modelData.id)
+                                        currentFormRows = appStore.rowsForForm(activeFormId)
+                                    }
+                                }
                             }
                         }
                     }
@@ -785,6 +814,9 @@ ApplicationWindow {
         title: rowId ? qsTr("Edit FISH1 row") : qsTr("Add FISH1 row")
         standardButtons: Dialog.Save | Dialog.Cancel
         anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
+        height: Math.min(implicitHeight, window.dialogMaxHeight)
         width: Math.min(parent.width - 24, 560)
 
         onOpened: {
@@ -831,7 +863,8 @@ ApplicationWindow {
 
         Flickable {
             width: parent.width
-            implicitHeight: Math.min(rowFields.implicitHeight, window.height - 200)
+            height: parent.height
+            implicitHeight: rowFields.implicitHeight
             contentHeight: rowFields.implicitHeight
             clip: true
             ColumnLayout {
@@ -875,6 +908,8 @@ ApplicationWindow {
         title: qsTr("Record wildlife observation")
         standardButtons: Dialog.Save | Dialog.Cancel
         anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
         width: Math.min(parent.width - 24, 520)
 
         onOpened: {
