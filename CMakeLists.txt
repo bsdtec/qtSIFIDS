@@ -43,6 +43,23 @@ qt_add_qml_module(qtSIFIDS
 target_include_directories(qtSIFIDS PRIVATE src)
 
 if(ANDROID)
+    # Qt's OpenSSL TLS backend needs these libraries bundled for https (map tiles, uploads).
+    if(NOT ANDROID_SDK_ROOT AND DEFINED ENV{ANDROID_SDK_ROOT})
+        set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_ROOT})
+    endif()
+    # Use a 16 KB page-aligned android_openssl checkout (https://github.com/KDAB/android_openssl);
+    # the copy bundled with older SDK installs is only 4 KB aligned.
+    set(SIFIDS_ANDROID_OPENSSL_ROOT "${ANDROID_SDK_ROOT}/android_openssl" CACHE PATH
+        "android_openssl directory containing ssl_3/<abi>")
+    set(SIFIDS_ANDROID_OPENSSL ${SIFIDS_ANDROID_OPENSSL_ROOT}/ssl_3/${CMAKE_ANDROID_ARCH_ABI})
+    if(EXISTS ${SIFIDS_ANDROID_OPENSSL}/libssl_3.so)
+        set_property(TARGET qtSIFIDS APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
+            ${SIFIDS_ANDROID_OPENSSL}/libcrypto_3.so
+            ${SIFIDS_ANDROID_OPENSSL}/libssl_3.so)
+    else()
+        message(WARNING "android_openssl not found at ${SIFIDS_ANDROID_OPENSSL}; https will not work")
+    endif()
+
     set_target_properties(qtSIFIDS PROPERTIES
         QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
         QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}

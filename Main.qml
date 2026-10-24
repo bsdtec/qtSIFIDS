@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Shapes
 import QtLocation
 import QtPositioning
 import Sifids
@@ -29,6 +30,8 @@ ApplicationWindow {
     Plugin {
         id: osmPlugin
         name: "osm"
+        PluginParameter { name: "osm.mapping.custom.host"; value: "https://tile.openstreetmap.org/" }
+        PluginParameter { name: "osm.useragent"; value: "qtSIFIDS/0.1 (com.bsdtec.qtSIFIDS)" }
     }
 
     property var animals: [
@@ -87,138 +90,163 @@ ApplicationWindow {
         currentIndex: tabs.currentIndex
 
         Item {
-            RowLayout {
+            Map {
+                id: map
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 14
+                plugin: osmPlugin
+                zoomLevel: 8
+                minimumZoomLevel: 2
+                maximumZoomLevel: 19
+                property geoCoordinate startCentroid
+                property bool autoZoomed: false
+                property bool following: true
 
-                Rectangle {
-                    Layout.preferredWidth: 270
-                    Layout.fillHeight: true
-                    Layout.minimumWidth: 210
-                    radius: 12
-                    color: "white"
-                    border.color: "#d9e0dc"
-
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 12
-
-                        Label {
-                            text: qsTr("Location tracking")
-                            font.pixelSize: 18
-                            font.bold: true
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: locationTracker.status
-                            wrapMode: Text.Wrap
-                        }
-
-                        Button {
-                            Layout.fillWidth: true
-                            text: locationTracker.tracking
-                                  ? qsTr("Stop tracking")
-                                  : qsTr("Start tracking")
-                            enabled: appStore.consented || locationTracker.tracking
-                            onClicked: locationTracker.tracking = !locationTracker.tracking
-                        }
-
-                        Switch {
-                            id: fishingToggle
-                            text: qsTr("Currently fishing")
-                            enabled: locationTracker.tracking && appStore.consented
-                        }
-
-                        ComboBox {
-                            id: trackRange
-                            Layout.fillWidth: true
-                            model: [qsTr("Last 24 hours"), qsTr("All saved history")]
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: !appStore.consented
-                            text: qsTr("Complete the consent details in Settings before recording location.")
-                            color: "#8b3a32"
-                            wrapMode: Text.Wrap
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            visible: locationTracker.hasPosition
-                            text: qsTr("Latitude: %1\nLongitude: %2\nAccuracy: %3 m")
-                                .arg(locationTracker.latitude.toFixed(6))
-                                .arg(locationTracker.longitude.toFixed(6))
-                                .arg(locationTracker.accuracy.toFixed(0))
-                            wrapMode: Text.Wrap
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            verticalAlignment: Text.AlignBottom
-                            text: qsTr("Location history is stored locally on this device.")
-                            color: "#58635f"
-                            wrapMode: Text.Wrap
+                Component.onCompleted: {
+                    for (let i = 0; i < supportedMapTypes.length; ++i) {
+                        if (supportedMapTypes[i].style === MapType.CustomMap) {
+                            activeMapType = supportedMapTypes[i]
+                            break
                         }
                     }
                 }
 
-                Map {
-                    id: map
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumWidth: 150
-                    plugin: osmPlugin
-                    zoomLevel: 8
-                    center: locationTracker.hasPosition
-                            ? QtPositioning.coordinate(locationTracker.latitude,
-                                                       locationTracker.longitude)
-                            : QtPositioning.coordinate(56.3, -2.8)
-
-                    MapPolyline {
-                        line.width: 3
-                        line.color: "#d8493e"
-                        path: appStore.locations.filter(function(point) {
-                            return trackRange.currentIndex !== 0
-                                   || point.timestamp >= Date.now() - 86400000
-                        }).map(function(point) {
-                            return QtPositioning.coordinate(point.latitude, point.longitude)
-                        })
+                Connections {
+                    target: locationTracker
+                    function onPositionChanged() {
+                        if (!locationTracker.hasPosition)
+                            return
+                        if (!map.autoZoomed) {
+                            map.autoZoomed = true
+                            map.zoomLevel = 14
+                        }
+                        if (map.following)
+                            map.center = QtPositioning.coordinate(locationTracker.latitude,
+                                                                  locationTracker.longitude)
                     }
+                }
 
-                    MapQuickItem {
-                        visible: locationTracker.hasPosition
-                        coordinate: QtPositioning.coordinate(locationTracker.latitude,
-                                                            locationTracker.longitude)
-                        anchorPoint.x: marker.width / 2
-                        anchorPoint.y: marker.height / 2
-                        sourceItem: Rectangle {
-                            id: marker
-                            width: 16
-                            height: 16
-                            radius: 8
-                            color: "#d8493e"
-                            border.color: "white"
-                            border.width: 2
+                PinchHandler {
+                    id: pinch
+                    target: null
+                    onActiveChanged: if (active) {
+                        map.following = false
+                        map.startCentroid = map.toCoordinate(pinch.centroid.position, false)
+                    }
+                    onScaleChanged: (delta) => {
+                        map.zoomLevel += Math.log2(delta)
+                        map.alignCoordinateToPoint(map.startCentroid, pinch.centroid.position)
+                    }
+                    grabPermissions: PointerHandler.TakeOverForbidden
+                }
+
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: (event) => map.zoomLevel += event.angleDelta.y / 240
+                }
+
+                DragHandler {
+                    target: null
+                    onTranslationChanged: (delta) => {
+                        map.following = false
+                        map.pan(-delta.x, -delta.y)
+                    }
+                }
+                center: QtPositioning.coordinate(56.3, -2.8)
+
+                MapQuickItem {
+                    visible: locationTracker.hasPosition
+                    coordinate: QtPositioning.coordinate(locationTracker.latitude,
+                                                        locationTracker.longitude)
+                    anchorPoint.x: marker.width / 2
+                    anchorPoint.y: marker.height / 2
+                    sourceItem: Rectangle {
+                        id: marker
+                        width: 16
+                        height: 16
+                        radius: 8
+                        color: "#d8493e"
+                        border.color: "white"
+                        border.width: 2
+                    }
+                }
+
+                Label {
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 8
+                    text: qsTr("© OpenStreetMap contributors")
+                    padding: 5
+                    background: Rectangle {
+                        color: "#eaffffff"
+                        radius: 3
+                    }
+                    font.pixelSize: 11
+                }
+            }
+
+            Item {
+                id: trackOverlay
+                anchors.fill: map
+                // Screen-space runs of consecutive track points with the same fishing state.
+                property var runs: {
+                    map.center; map.zoomLevel; map.bearing; map.tilt; map.width; map.height
+                    const cutoff = trackRange.currentIndex === 0 ? Date.now() - 86400000 : 0
+                    const points = appStore.locations.filter(p => p.timestamp >= cutoff)
+                    const result = []
+                    let current = null
+                    for (let n = 1; n < points.length; ++n) {
+                        const a = points[n - 1], b = points[n]
+                        if (b.timestamp - a.timestamp > 600000) {
+                            current = null
+                            continue
+                        }
+                        const fishing = b.fishing === 1 || b.fishing === true
+                        if (!current || current.fishing !== fishing) {
+                            current = { fishing: fishing,
+                                        points: [map.fromCoordinate(QtPositioning.coordinate(a.latitude, a.longitude), false)] }
+                            result.push(current)
+                        }
+                        current.points.push(map.fromCoordinate(QtPositioning.coordinate(b.latitude, b.longitude), false))
+                    }
+                    return result
+                }
+
+                Repeater {
+                    model: trackOverlay.runs
+                    delegate: Shape {
+                        required property var modelData
+                        anchors.fill: parent
+                        ShapePath {
+                            strokeColor: modelData.fishing ? "#ff8c00" : "#d8493e"
+                            strokeWidth: modelData.fishing ? 4 : 3
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            strokeStyle: modelData.fishing ? ShapePath.SolidLine : ShapePath.DashLine
+                            dashPattern: [1.5, 2.5]
+                            PathPolyline { path: modelData.points }
                         }
                     }
+                }
+            }
 
-                    Label {
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.margins: 8
-                        text: qsTr("© OpenStreetMap contributors")
-                        padding: 5
-                        background: Rectangle {
-                            color: "#eaffffff"
-                            radius: 3
-                        }
-                        font.pixelSize: 11
-                    }
+            Button {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: 10
+                text: locationTracker.tracking ? qsTr("Tracking ●") : qsTr("Tracking")
+                onClicked: trackingDialog.open()
+            }
+
+            Button {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 10
+                visible: !map.following && locationTracker.hasPosition
+                text: qsTr("Follow")
+                onClicked: {
+                    map.following = true
+                    map.center = QtPositioning.coordinate(locationTracker.latitude,
+                                                          locationTracker.longitude)
                 }
             }
         }
@@ -292,7 +320,10 @@ ApplicationWindow {
                             Button {
                                 text: qsTr("CSV")
                                 onClicked: {
-                                    appStore.exportFormCsv(modelData.id)
+                                    csvSaveDialog.exportingTrack = false
+                                    csvSaveDialog.formId = modelData.id
+                                    csvSaveDialog.currentFile = (modelData.pln || "FISH1") + ".csv"
+                                    csvSaveDialog.open()
                                 }
                             }
                             Button {
@@ -396,13 +427,13 @@ ApplicationWindow {
                         font.bold: true
                     }
 
-                    TextField { id: prefPln; Layout.fillWidth: true; placeholderText: qsTr("Vessel PLN") }
-                    TextField { id: prefVessel; Layout.fillWidth: true; placeholderText: qsTr("Vessel name") }
-                    TextField { id: prefOwner; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master name") }
-                    TextField { id: prefAddress; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master address") }
-                    TextField { id: prefOwnerEmail; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master email") }
-                    TextField { id: prefFisheryOffice; Layout.fillWidth: true; placeholderText: qsTr("Fishery office") }
-                    TextField { id: prefOfficeEmail; Layout.fillWidth: true; placeholderText: qsTr("Fishery office email") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefPln; Layout.fillWidth: true; placeholderText: qsTr("Vessel PLN") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefVessel; Layout.fillWidth: true; placeholderText: qsTr("Vessel name") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefOwner; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master name") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefAddress; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master address") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefOwnerEmail; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master email") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefFisheryOffice; Layout.fillWidth: true; placeholderText: qsTr("Fishery office") }
+                    TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: prefOfficeEmail; Layout.fillWidth: true; placeholderText: qsTr("Fishery office email") }
 
                     Label {
                         Layout.fillWidth: true
@@ -455,9 +486,9 @@ ApplicationWindow {
                                 text: qsTr("SIFIDS records catch activity, wildlife observations, and (when enabled) fishing locations. Location records are stored on this device and are uploaded with the vessel PLN to the SIFIDS service. Review the complete project information and privacy terms before consenting.")
                                 wrapMode: Text.Wrap
                             }
-                            TextField { id: consentName; Layout.fillWidth: true; placeholderText: qsTr("Participant name") }
-                            TextField { id: consentEmail; Layout.fillWidth: true; placeholderText: qsTr("Participant email") }
-                            TextField { id: consentPhone; Layout.fillWidth: true; placeholderText: qsTr("Participant phone") }
+                            TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: consentName; Layout.fillWidth: true; placeholderText: qsTr("Participant name") }
+                            TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: consentEmail; Layout.fillWidth: true; placeholderText: qsTr("Participant email") }
+                            TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: consentPhone; Layout.fillWidth: true; placeholderText: qsTr("Participant phone") }
                             CheckBox {
                                 id: consentConfirmed
                                 Layout.fillWidth: true
@@ -514,6 +545,88 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: trackingDialog
+        modal: true
+        title: qsTr("Location tracking")
+        standardButtons: Dialog.Close
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 24, 420)
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Label {
+                    Layout.fillWidth: true
+                    text: locationTracker.status
+                    wrapMode: Text.Wrap
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: locationTracker.tracking
+                          ? qsTr("Stop tracking")
+                          : qsTr("Start tracking")
+                    enabled: appStore.consented || locationTracker.tracking
+                    onClicked: locationTracker.tracking = !locationTracker.tracking
+                }
+
+                Switch {
+                    id: fishingToggle
+                    text: qsTr("Currently fishing")
+                    enabled: locationTracker.tracking && appStore.consented
+                }
+
+                ComboBox {
+                    id: trackRange
+                    Layout.fillWidth: true
+                    model: [qsTr("Last 24 hours"), qsTr("All saved history")]
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: qsTr("Export track to CSV")
+                    onClicked: {
+                        trackingDialog.close()
+                        csvSaveDialog.exportingTrack = true
+                        csvSaveDialog.currentFile = "SIFIDS-track.csv"
+                        csvSaveDialog.open()
+                    }
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: !appStore.consented
+                    text: qsTr("Complete the consent details in Settings before recording location.")
+                    color: "#8b3a32"
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    visible: locationTracker.hasPosition
+                    text: qsTr("Latitude: %1\nLongitude: %2\nAccuracy: %3 m")
+                        .arg(locationTracker.latitude.toFixed(6))
+                        .arg(locationTracker.longitude.toFixed(6))
+                        .arg(locationTracker.accuracy.toFixed(0))
+                    wrapMode: Text.Wrap
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    text: qsTr("Location history is stored locally on this device.")
+                    color: "#58635f"
+                    wrapMode: Text.Wrap
+                }
+            }
+
+        }
+    }
+
+    Dialog {
         id: formDialog
         property int formId: 0
         property var formData: ({})
@@ -564,25 +677,25 @@ ApplicationWindow {
                 id: formFields
                 width: parent.width
                 Label { text: qsTr("Fishery office"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: officeField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: officeField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office") }
                 Label { text: qsTr("Fishery office email"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: officeEmailField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office email") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: officeEmailField; Layout.fillWidth: true; placeholderText: qsTr("Fishery office email") }
                 Label { text: qsTr("Vessel PLN"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: plnField; Layout.fillWidth: true; placeholderText: qsTr("Vessel PLN") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: plnField; Layout.fillWidth: true; placeholderText: qsTr("Vessel PLN") }
                 Label { text: qsTr("Vessel name"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: vesselField; Layout.fillWidth: true; placeholderText: qsTr("Vessel name") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: vesselField; Layout.fillWidth: true; placeholderText: qsTr("Vessel name") }
                 Label { text: qsTr("Owner/Master"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: ownerField; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: ownerField; Layout.fillWidth: true; placeholderText: qsTr("Owner/Master") }
                 Label { text: qsTr("Address"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: addressField; Layout.fillWidth: true; placeholderText: qsTr("Address") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: addressField; Layout.fillWidth: true; placeholderText: qsTr("Address") }
                 Label { text: qsTr("Port of departure"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: departureField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: departureField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("Port of landing"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: landingField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: landingField; Layout.fillWidth: true; editable: true; model: appStore.ports; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("Total pots fishing"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: potsField; Layout.fillWidth: true; placeholderText: qsTr("Total pots fishing"); inputMethodHints: Qt.ImhDigitsOnly }
+                TextField { id: potsField; Layout.fillWidth: true; placeholderText: qsTr("Total pots fishing"); inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhNoPredictiveText }
                 Label { text: qsTr("Comments and buyers information"); font.bold: true; Layout.topMargin: 4 }
-                TextArea { id: commentsField; Layout.fillWidth: true; placeholderText: qsTr("Comments and buyers information"); wrapMode: TextEdit.Wrap }
+                TextArea { inputMethodHints: Qt.ImhNoPredictiveText; id: commentsField; Layout.fillWidth: true; placeholderText: qsTr("Comments and buyers information"); wrapMode: TextEdit.Wrap }
             }
         }
     }
@@ -725,33 +838,33 @@ ApplicationWindow {
                 id: rowFields
                 width: parent.width
                 Label { text: qsTr("Fishing date (YYYY-MM-DD)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowDate; Layout.fillWidth: true; placeholderText: qsTr("Fishing date (YYYY-MM-DD)") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: rowDate; Layout.fillWidth: true; placeholderText: qsTr("Fishing date (YYYY-MM-DD)") }
                 Label { text: qsTr("Latitude (decimal degrees)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowLatitude; Layout.fillWidth: true; placeholderText: qsTr("Latitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                TextField { id: rowLatitude; Layout.fillWidth: true; placeholderText: qsTr("Latitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText }
                 Label { text: qsTr("Longitude (decimal degrees)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowLongitude; Layout.fillWidth: true; placeholderText: qsTr("Longitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                TextField { id: rowLongitude; Layout.fillWidth: true; placeholderText: qsTr("Longitude (decimal degrees)"); inputMethodHints: Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText }
                 Label { text: qsTr("ICES area"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowIces; Layout.fillWidth: true; placeholderText: qsTr("ICES area") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: rowIces; Layout.fillWidth: true; placeholderText: qsTr("ICES area") }
                 Label { text: qsTr("Gear"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: rowGear; Layout.fillWidth: true; editable: true; model: appStore.gears; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: rowGear; Layout.fillWidth: true; editable: true; model: appStore.gears; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("Mesh size (mm)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowMesh; Layout.fillWidth: true; placeholderText: qsTr("Mesh size (mm)"); inputMethodHints: Qt.ImhDigitsOnly }
+                TextField { id: rowMesh; Layout.fillWidth: true; placeholderText: qsTr("Mesh size (mm)"); inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhNoPredictiveText }
                 Label { text: qsTr("Species"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: rowSpecies; Layout.fillWidth: true; editable: true; model: appStore.species; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: rowSpecies; Layout.fillWidth: true; editable: true; model: appStore.species; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("State"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: rowState; Layout.fillWidth: true; editable: true; model: appStore.states; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: rowState; Layout.fillWidth: true; editable: true; model: appStore.states; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("Presentation"); font.bold: true; Layout.topMargin: 4 }
-                ComboBox { id: rowPresentation; Layout.fillWidth: true; editable: true; model: appStore.presentations; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
+                ComboBox { inputMethodHints: Qt.ImhNoPredictiveText; id: rowPresentation; Layout.fillWidth: true; editable: true; model: appStore.presentations; currentIndex: -1; onActiveFocusChanged: if (activeFocus) popup.open() }
                 Label { text: qsTr("Weight (kg)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowWeight; Layout.fillWidth: true; placeholderText: qsTr("Weight (kg)"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                TextField { id: rowWeight; Layout.fillWidth: true; placeholderText: qsTr("Weight (kg)"); inputMethodHints: Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText }
                 CheckBox { id: rowDis; text: qsTr("DIS") }
                 CheckBox { id: rowBms; text: qsTr("BMS") }
                 Label { text: qsTr("Number of pots hauled"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowPots; Layout.fillWidth: true; placeholderText: qsTr("Number of pots hauled"); inputMethodHints: Qt.ImhDigitsOnly }
+                TextField { id: rowPots; Layout.fillWidth: true; placeholderText: qsTr("Number of pots hauled"); inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhNoPredictiveText }
                 Label { text: qsTr("Landing/discard date (YYYY-MM-DD)"); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowLanding; Layout.fillWidth: true; placeholderText: qsTr("Landing/discard date (YYYY-MM-DD)") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: rowLanding; Layout.fillWidth: true; placeholderText: qsTr("Landing/discard date (YYYY-MM-DD)") }
                 Label { text: qsTr("Transporter registration etc."); font.bold: true; Layout.topMargin: 4 }
-                TextField { id: rowTransporter; Layout.fillWidth: true; placeholderText: qsTr("Transporter registration etc.") }
+                TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: rowTransporter; Layout.fillWidth: true; placeholderText: qsTr("Transporter registration etc.") }
             }
         }
     }
@@ -788,12 +901,27 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 model: window.animals
             }
-            TextField { id: obsSpecies; Layout.fillWidth: true; placeholderText: qsTr("Species (optional)") }
-            TextField { id: obsDate; Layout.fillWidth: true; placeholderText: qsTr("Date and time (ISO format)") }
-            TextField { id: obsLatitude; Layout.fillWidth: true; placeholderText: qsTr("Latitude"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
-            TextField { id: obsLongitude; Layout.fillWidth: true; placeholderText: qsTr("Longitude"); inputMethodHints: Qt.ImhFormattedNumbersOnly }
-            TextField { id: obsCount; Layout.fillWidth: true; placeholderText: qsTr("Number seen"); text: "1"; inputMethodHints: Qt.ImhDigitsOnly }
-            TextArea { id: obsNotes; Layout.fillWidth: true; placeholderText: qsTr("Notes"); wrapMode: TextEdit.Wrap }
+            TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: obsSpecies; Layout.fillWidth: true; placeholderText: qsTr("Species (optional)") }
+            TextField { inputMethodHints: Qt.ImhNoPredictiveText; id: obsDate; Layout.fillWidth: true; placeholderText: qsTr("Date and time (ISO format)") }
+            TextField { id: obsLatitude; Layout.fillWidth: true; placeholderText: qsTr("Latitude"); inputMethodHints: Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText }
+            TextField { id: obsLongitude; Layout.fillWidth: true; placeholderText: qsTr("Longitude"); inputMethodHints: Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText }
+            TextField { id: obsCount; Layout.fillWidth: true; placeholderText: qsTr("Number seen"); text: "1"; inputMethodHints: Qt.ImhDigitsOnly | Qt.ImhNoPredictiveText }
+            TextArea { inputMethodHints: Qt.ImhNoPredictiveText; id: obsNotes; Layout.fillWidth: true; placeholderText: qsTr("Notes"); wrapMode: TextEdit.Wrap }
+        }
+    }
+
+    FileDialog {
+        id: csvSaveDialog
+        property bool exportingTrack: false
+        property int formId: 0
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "csv"
+        nameFilters: [qsTr("CSV files (*.csv)")]
+        onAccepted: {
+            if (exportingTrack)
+                appStore.exportTrackCsv(trackRange.currentIndex === 0, selectedFile.toString())
+            else
+                appStore.exportFormCsv(formId, selectedFile.toString())
         }
     }
 

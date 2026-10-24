@@ -52,7 +52,8 @@ public:
     Q_INVOKABLE bool deleteObservation(int observationId);
     Q_INVOKABLE void recordLocation(double latitude, double longitude,
                                     double accuracy, qint64 timestamp, bool fishing);
-    Q_INVOKABLE QString exportFormCsv(int formId);
+    Q_INVOKABLE QString exportFormCsv(int formId, const QString &destination = QString());
+    Q_INVOKABLE QString exportTrackCsv(bool lastDayOnly, const QString &destination = QString());
     Q_INVOKABLE void uploadPending(const QString &vesselPln);
     Q_INVOKABLE void uploadFormCsv(int formId, const QString &vesselPln);
     Q_INVOKABLE bool importAndroidDatabase(const QString &filePath);
@@ -67,6 +68,8 @@ private:
     bool execute(const QString &sql) const;
     void finishUploads();
     void setStatus(const QString &status);
+    QString writeExportFile(const QString &destination, const QString &defaultName,
+                            const QString &contents);
     QVariantList queryRows(const QString &sql) const;
     QVariantList lookupValues(const QString &table, const QString &nameColumn) const;
 

@@ -127,6 +127,14 @@ private slots:
         QCOMPARE(store.locations().size(), 1);
         QCOMPARE(store.locations().first().toMap()
                      .value(QStringLiteral("fishing")).toInt(), 1);
+
+        const QString path = store.exportTrackCsv(true);
+        QVERIFY2(!path.isEmpty(), qPrintable(store.status()));
+        QFile csv(path);
+        QVERIFY(csv.open(QIODevice::ReadOnly));
+        const QByteArray contents = csv.readAll();
+        QVERIFY(contents.startsWith("Timestamp (UTC),Latitude,Longitude,Accuracy (m),Fishing"));
+        QVERIFY(contents.contains("56.100000,-2.800000,5,Yes"));
     }
 
     void importsRoomVersion15Database()

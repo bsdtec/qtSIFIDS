@@ -1,6 +1,7 @@
 #include "AppStore.h"
 
 #include <QDir>
+#include <QTimeZone>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -479,7 +480,75 @@ void AppStore::recordLocation(double latitude, double longitude, double accuracy
     emit dataChanged();
 }
 
-QString AppStore::exportFormCsv(int formId)
+QString AppStore::writeExportFile(const QString &destination, const QString &defaultName,
+                                  const QString &contents)
+{
+    QString target;
+    if (destination.isEmpty()) {
+        const QString exportDirectory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        if (!QDir().mkpath(exportDirectory)) {
+            setStatus(tr("Could not create the documents directory."));
+            return {};
+        }
+        target = exportDirectory + QLatin1Char('/') + defaultName;
+    } else {
+        const QUrl url(destination);
+        target = url.isLocalFile() ? url.toLocalFile() : destination;
+    }
+
+    // Android content:// documents cannot be written through QSaveFile's temp-file rename.
+    QFile file(target);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+        || file.write(contents.toUtf8()) < 0) {
+        setStatus(tr("Could not write CSV: %1").arg(file.errorString()));
+        return {};
+    }
+    file.close();
+    return target;
+}
+
+QString AppStore::exportTrackCsv(bool lastDayOnly, const QString &destination)
+{
+    QSqlQuery query(*m_database);
+    query.prepare(QStringLiteral(
+        "SELECT timestamp, latitude, longitude, accuracy, fishing FROM locations "
+        "WHERE timestamp >= ? ORDER BY timestamp"));
+    query.addBindValue(lastDayOnly
+        ? QDateTime::currentMSecsSinceEpoch() - 24LL * 60 * 60 * 1000
+        : 0LL);
+    if (!query.exec()) {
+        setStatus(tr("Could not export track: %1").arg(query.lastError().text()));
+        return {};
+    }
+
+    QString csv = QStringLiteral("Timestamp (UTC),Latitude,Longitude,Accuracy (m),Fishing\n");
+    int count = 0;
+    while (query.next()) {
+        const QString time = QDateTime::fromMSecsSinceEpoch(query.value(0).toLongLong(), QTimeZone::UTC)
+                                 .toString(Qt::ISODate);
+        csv += QStringLiteral("%1,%2,%3,%4,%5\n")
+                   .arg(time)
+                   .arg(query.value(1).toDouble(), 0, 'f', 6)
+                   .arg(query.value(2).toDouble(), 0, 'f', 6)
+                   .arg(query.value(3).toDouble(), 0, 'f', 0)
+                   .arg(query.value(4).toInt() ? QStringLiteral("Yes") : QStringLiteral("No"));
+        ++count;
+    }
+    if (count == 0) {
+        setStatus(tr("There are no track points to export."));
+        return {};
+    }
+
+    const QString defaultName = QStringLiteral("SIFIDS-track-%1.csv")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")));
+    const QString filePath = writeExportFile(destination, defaultName, csv);
+    if (filePath.isEmpty())
+        return {};
+    setStatus(tr("Track CSV (%1 points) exported to %2").arg(count).arg(filePath));
+    return filePath;
+}
+
+QString AppStore::exportFormCsv(int formId, const QString &destination)
 {
     QSqlQuery formQuery(*m_database);
     formQuery.prepare(QStringLiteral("SELECT * FROM forms WHERE id = ?"));
@@ -530,21 +599,13 @@ QString AppStore::exportFormCsv(int formId)
         csv += fields.join(QLatin1Char(',')) + QLatin1Char('\n');
     }
 
-    const QString exportDirectory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (!QDir().mkpath(exportDirectory)) {
-        setStatus(tr("Could not create the documents directory."));
-        return {};
-    }
     QString fileName = formQuery.value(form.indexOf(QStringLiteral("pln"))).toString();
     if (fileName.isEmpty())
         fileName = QStringLiteral("FISH1-%1").arg(formId);
     fileName.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")), QStringLiteral("_"));
-    const QString filePath = exportDirectory + QLatin1Char('/') + fileName + QStringLiteral(".csv");
-    QSaveFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly) || file.write(csv.toUtf8()) < 0 || !file.commit()) {
-        setStatus(tr("Could not write FISH1 CSV: %1").arg(file.errorString()));
+    const QString filePath = writeExportFile(destination, fileName + QStringLiteral(".csv"), csv);
+    if (filePath.isEmpty())
         return {};
-    }
     setStatus(tr("FISH1 CSV exported to %1").arg(filePath));
     return filePath;
 }
