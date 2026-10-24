@@ -31,14 +31,27 @@ export ANDROID_SDK_ROOT=$HOME/Android/Sdk
 export ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/<version>
 ~/Qt/6.11.0/android_arm64_v8a/bin/qt-cmake -S . -B build-android \
     -DQT_HOST_PATH=$HOME/Qt/6.11.0/gcc_64 \
-    -DANDROID_SDK_ROOT=$ANDROID_SDK_ROOT -DANDROID_NDK_ROOT=$ANDROID_NDK_ROOT
+    -DANDROID_SDK_ROOT=$ANDROID_SDK_ROOT -DANDROID_NDK_ROOT=$ANDROID_NDK_ROOT \
+    -DSIFIDS_ANDROID_OPENSSL_ROOT=$HOME/Android/android_openssl_16k
 cmake --build build-android --target apk
 ```
 
 The APK is written under `build-android/android-build/build/outputs/apk/`.
-Use `--target aab` for a Play Store bundle. Manifest and permissions (internet,
-fine/coarse location) are in `android/AndroidManifest.xml`; the app requests
-location permission at runtime when tracking is first enabled.
+Use `--target aab` for a Play Store bundle. Manifest, permissions (internet,
+fine/coarse location) and launcher icons are in `android/`; the app requests
+location permission at runtime when tracking is first enabled. The package
+name is `com.bsdtec.qtSIFIDS`.
+
+**OpenSSL and 16 KB pages:** OSM tiles are served over HTTPS, and Qt on
+Android needs OpenSSL 3 libraries bundled (`libssl_3.so`, `libcrypto_3.so`).
+The copies shipped with the Android SDK are 4 KB aligned, so Android 15+
+shows a "not 16 KB compatible" warning. Clone
+[KDAB/android_openssl](https://github.com/KDAB/android_openssl) (the current
+`master` is 16 KB aligned) and point `SIFIDS_ANDROID_OPENSSL_ROOT` at it.
+Without it the map shows grey tiles on Android.
+
+Install on a device with `adb install -r <apk>`. Debug builds target
+arm64-v8a only; a release build needs your own signing keystore.
 
 ## Implemented so far
 
@@ -47,9 +60,16 @@ location permission at runtime when tracking is first enabled.
 - Local SQLite persistence for forms, form rows, observations, and GPS track
   points.
 - Foreground location tracking through Qt Positioning and a Qt Location OSM
-  map, including track display and visible attribution.
-- FISH1 CSV export and the existing SIFIDS upload endpoint for forms,
-  observations, and locations.
+  map (pinch/drag/wheel gestures, auto-zoom on first fix, follow mode) with
+  visible attribution. Tracks are drawn as a dotted red line when not fishing
+  and a solid orange line when fishing.
+- Phone-friendly UI: tracking controls in a pop-up, dialogs sized to the
+  usable screen area, and ⋮ menus on form and row entries.
+- New FISH1 rows are pre-filled with the current latitude/longitude when a
+  GPS fix is available.
+- FISH1 CSV export and track CSV export (last 24 hours or all history), saved
+  through a file dialog so the files are reachable from the Files app.
+- The existing SIFIDS upload endpoint for forms, observations, and locations.
 - Additive import of forms, rows, observations, and locations from Android
   Room database version 15. Select a database copy from Settings; Android app
   preferences are not imported.
@@ -64,8 +84,9 @@ additively, so importing the same file more than once creates duplicates.
 
 Qt's positioning API provides a shared interface, but OS permissions and
 background execution are platform-specific. Android foreground-service
-tracking and notifications, iOS background location and permissions, and
-packaging/signing for Android and iOS are not implemented yet. Linux location
+tracking and notifications (tracking currently runs only while the app is in
+the foreground), iOS background location and permissions, and release
+signing for Android and iOS are not implemented yet. Linux location
 support depends on a provider being installed and available.
 
 Also not yet ported: the full participant information and consent form, all

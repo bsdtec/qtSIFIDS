@@ -821,8 +821,9 @@ ApplicationWindow {
 
         onOpened: {
             rowDate.text = rowData.fishing_activity_date || new Date().toISOString().slice(0, 10)
-            rowLatitude.text = rowData.latitude || ""
-            rowLongitude.text = rowData.longitude || ""
+            const fillFromGps = rowId === 0 && locationTracker.hasPosition
+            rowLatitude.text = rowData.latitude || (fillFromGps ? locationTracker.latitude.toFixed(6) : "")
+            rowLongitude.text = rowData.longitude || (fillFromGps ? locationTracker.longitude.toFixed(6) : "")
             rowIces.text = rowData.ices_area || ""
             rowGear.editText = rowData.gear || ""
             rowMesh.text = rowData.mesh_size || ""
