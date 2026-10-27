@@ -154,6 +154,24 @@ ApplicationWindow {
                         map.pan(-delta.x, -delta.y)
                     }
                 }
+                TapHandler {
+                    acceptedDevices: PointerDevice.Mouse
+                    acceptedButtons: Qt.LeftButton
+                    onDoubleTapped: (point) => map.zoomAt(point.position, 1)
+                }
+
+                TapHandler {
+                    acceptedDevices: PointerDevice.Mouse
+                    acceptedButtons: Qt.RightButton
+                    onDoubleTapped: (point) => map.zoomAt(point.position, -1)
+                }
+
+                function zoomAt(pos, step) {
+                    const anchor = map.toCoordinate(pos, false)
+                    following = false
+                    zoomLevel += step
+                    alignCoordinateToPoint(anchor, pos)
+                }
                 center: QtPositioning.coordinate(56.3, -2.8)
 
                 MapQuickItem {
