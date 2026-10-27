@@ -17,7 +17,14 @@ ApplicationWindow {
     objectName: "mainWindow"
     visible: true
     title: qsTr("SIFIDS")
-    color: "#f4f6f5"
+    color: bgColor
+
+    readonly property bool dark: Application.styleHints.colorScheme === Qt.ColorScheme.Dark
+    readonly property color bgColor: dark ? "#1e2321" : "#f4f6f5"
+    readonly property color cardColor: dark ? "#2b312e" : "white"
+    readonly property color cardBorder: dark ? "#434b47" : "#d9e0dc"
+    readonly property color mutedText: dark ? "#aab5b0" : "#58635f"
+    readonly property color errorText: dark ? "#ff9a90" : "#8b3a32"
 
     // The window extends under Android's system bars but contentItem does not, so size dialogs from it.
     readonly property real dialogMaxHeight: contentItem.height - 24
@@ -61,7 +68,7 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     text: appStore.status
-                    color: "#58635f"
+                    color: window.mutedText
                     elide: Text.ElideRight
                 }
 
@@ -197,6 +204,7 @@ ApplicationWindow {
                     anchors.margins: 8
                     text: qsTr("© OpenStreetMap contributors")
                     padding: 5
+                    color: "#222222"
                     background: Rectangle {
                         color: "#eaffffff"
                         radius: 3
@@ -308,8 +316,8 @@ ApplicationWindow {
                         width: formsList.width
                         height: 74
                         radius: 8
-                        color: "white"
-                        border.color: "#d9e0dc"
+                        color: window.cardColor
+                        border.color: window.cardBorder
 
                         RowLayout {
                             anchors.fill: parent
@@ -408,8 +416,8 @@ ApplicationWindow {
                         width: observationsList.width
                         height: 78
                         radius: 8
-                        color: "white"
-                        border.color: "#d9e0dc"
+                        color: window.cardColor
+                        border.color: window.cardBorder
 
                         RowLayout {
                             anchors.fill: parent
@@ -468,7 +476,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: qsTr("Consent and privacy: location recording and uploads must only be enabled after the participant has reviewed the project information and consented. Consent capture and withdrawal workflows still need to be ported.")
                         wrapMode: Text.Wrap
-                        color: "#58635f"
+                        color: window.mutedText
                     }
 
                     Button {
@@ -496,9 +504,9 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: consentColumn.implicitHeight + 24
-                        color: "white"
+                        color: window.cardColor
                         radius: 8
-                        border.color: "#d9e0dc"
+                        border.color: window.cardBorder
 
                         ColumnLayout {
                             id: consentColumn
@@ -631,7 +639,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     visible: !appStore.consented
                     text: qsTr("Complete the consent details in Settings before recording location.")
-                    color: "#8b3a32"
+                    color: window.errorText
                     wrapMode: Text.Wrap
                 }
 
@@ -649,7 +657,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     text: qsTr("Location history is stored locally on this device.")
-                    color: "#58635f"
+                    color: window.mutedText
                     wrapMode: Text.Wrap
                 }
             }
@@ -781,7 +789,7 @@ ApplicationWindow {
                     width: ListView.view.width
                     height: 56
                     radius: 6
-                    color: "#f4f6f5"
+                    color: window.bgColor
                     RowLayout {
                         anchors.fill: parent
                         anchors.margins: 8
