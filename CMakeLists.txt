@@ -24,9 +24,26 @@ qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW)
 qt_policy(SET QTP0004 NEW)
 
+set(SIFIDS_APP_ICONS)
+if(WIN32)
+    # The .rc file embeds the icon in the .exe.
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc
+        "IDI_ICON1 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/icons/ic_launcher.ico\"\n")
+    set(SIFIDS_APP_ICONS ${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc)
+elseif(APPLE AND NOT IOS)
+    set(SIFIDS_APP_ICONS ${CMAKE_CURRENT_SOURCE_DIR}/icons/ic_launcher.icns)
+    set_source_files_properties(${SIFIDS_APP_ICONS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+endif()
+
 qt_add_executable(qtSIFIDS
     src/main.cpp
+    ${SIFIDS_APP_ICONS}
 )
+
+if(APPLE AND NOT IOS)
+    set_target_properties(qtSIFIDS PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE ic_launcher.icns)
+endif()
 
 qt_add_qml_module(qtSIFIDS
     URI Sifids
@@ -38,6 +55,11 @@ qt_add_qml_module(qtSIFIDS
     src/AppStore.h
     src/LocationTracker.cpp
     src/LocationTracker.h
+)
+
+qt_add_resources(qtSIFIDS app_icon
+    PREFIX /
+    FILES icons/ic_launcher.png
 )
 
 target_include_directories(qtSIFIDS PRIVATE src)

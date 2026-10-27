@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 
 #include <QtLogging>
@@ -26,6 +27,8 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("qtSIFIDS"));
     app.setOrganizationName(QStringLiteral("StAResComp"));
     app.setDesktopFileName(QStringLiteral("com.bsdtec.qtSIFIDS"));
+
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/ic_launcher.png")));
 
     QQmlApplicationEngine engine;
     engine.loadFromModule(QStringLiteral("Sifids"), QStringLiteral("Main"));
