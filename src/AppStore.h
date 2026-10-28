@@ -54,6 +54,9 @@ public:
 
     Q_INVOKABLE QVariantList rowsForForm(int formId) const;
     Q_INVOKABLE QVariantMap settings() const;
+    Q_INVOKABLE QVariantMap pinRecord(const QString &kind, int id) const;
+    Q_INVOKABLE int dropPot(double latitude, double longitude, qint64 timestamp = 0);
+    Q_INVOKABLE bool deletePot(int potId);
     Q_INVOKABLE int savePlace(const QString &name, double latitude, double longitude);
     Q_INVOKABLE bool deletePlace(int placeId);
     Q_INVOKABLE bool saveSettings(const QVariantMap &values);

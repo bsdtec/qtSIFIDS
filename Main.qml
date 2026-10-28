@@ -71,7 +71,7 @@ ApplicationWindow {
     property bool addMenuOpen: false
     readonly property bool dialogOpen: sailPlanDialog.visible || simulatorDialog.visible
         || rowDialog.visible || observationDialog.visible
-        || statusDialog.visible || mapNoticeDialog.visible
+        || statusDialog.visible || mapNoticeDialog.visible || potDialog.visible
 
     function showNotice(message) {
         mapNoticeLabel.text = message
@@ -104,6 +104,35 @@ ApplicationWindow {
         rowDialog.rowData = ({})
         rowDialog.pinOnSave = true
         rowDialog.open()
+    }
+
+    function editFishRowFromMap(rowId) {
+        const row = appStore.pinRecord("row", rowId)
+        if (!row.id)
+            return
+        activeFormId = row.form_id
+        const form = activeFormForMap()
+        activeFormTitle = form ? (form.pln || qsTr("FISH1 form")) : qsTr("FISH1 form")
+        rowDialog.rowId = row.id
+        rowDialog.rowData = row
+        rowDialog.open()
+    }
+
+    function editObservationFromMap(observationId) {
+        const observation = appStore.pinRecord("observation", observationId)
+        if (!observation.id)
+            return
+        observationDialog.obsId = observation.id
+        observationDialog.obsData = observation
+        observationDialog.open()
+    }
+
+    function dropPotFromMap() {
+        if (!locationTracker.hasPosition) {
+            showNotice(qsTr("Waiting for a location fix before a pot can be marked."))
+            return
+        }
+        appStore.dropPot(locationTracker.latitude, locationTracker.longitude)
     }
 
     function addObservationFromMap() {
@@ -155,6 +184,7 @@ ApplicationWindow {
     component MapPin: Item {
         property color pinColor: "#ff8c00"
         property string letter: ""
+        signal tapped()
         width: 28
         height: 40
         Rectangle {
@@ -176,6 +206,9 @@ ApplicationWindow {
                 font.bold: true
                 font.pixelSize: 14
             }
+        }
+        TapHandler {
+            onTapped: parent.tapped()
         }
     }
 
@@ -258,6 +291,7 @@ ApplicationWindow {
                         if (!map.autoZoomed) {
                             map.autoZoomed = true
                             map.zoomLevel = 14
+                            map.following = true
                         }
                         if (map.following)
                             map.center = QtPositioning.coordinate(locationTracker.latitude,
@@ -361,8 +395,23 @@ ApplicationWindow {
                         anchorPoint.x: 14
                         anchorPoint.y: 40
                         sourceItem: MapPin {
-                            pinColor: modelData.kind === "row" ? "#ff8c00" : "#00838f"
-                            letter: modelData.kind === "row" ? "F" : "O"
+                            pinColor: modelData.kind === "row" ? "#ff8c00"
+                                      : modelData.kind === "pot" ? "#6d4c41" : "#00838f"
+                            letter: modelData.kind === "row" ? "F"
+                                    : modelData.kind === "pot" ? "P" : "O"
+                            onTapped: {
+                                if (modelData.kind === "row")
+                                    window.editFishRowFromMap(modelData.id)
+                                else if (modelData.kind === "observation")
+                                    window.editObservationFromMap(modelData.id)
+                                else if (modelData.kind === "pot") {
+                                    potDialog.potId = modelData.id
+                                    potDialog.potTime = new Date(Number(modelData.label))
+                                    potDialog.potLatitude = modelData.latitude
+                                    potDialog.potLongitude = modelData.longitude
+                                    potDialog.open()
+                                }
+                            }
                         }
                     }
                 }
@@ -500,6 +549,33 @@ ApplicationWindow {
                 spacing: 10
 
                 MapButton {
+                    id: addFishButton
+                    active: true
+                    activeColor: "#ff8c00"
+                    onClicked: window.addFishRowFromMap()
+
+                    // Fish outline: body, tail and eye.
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 26; height: 24
+                        preferredRendererType: Shape.CurveRenderer
+                        ShapePath {
+                            strokeColor: addFishButton.glyphColor
+                            strokeWidth: 2
+                            fillColor: "transparent"
+                            joinStyle: ShapePath.RoundJoin
+                            capStyle: ShapePath.RoundCap
+                            PathSvg { path: "M 2 12 Q 9 3 17 12 Q 9 21 2 12 Z M 17 12 L 24 6 L 24 18 Z" }
+                        }
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: addFishButton.glyphColor
+                            PathSvg { path: "M 6 10 a 1.3 1.3 0 1 0 0.01 0 Z" }
+                        }
+                    }
+                }
+
+                MapButton {
                     id: addObservationButton
                     active: true
                     activeColor: "#00838f"
@@ -540,28 +616,37 @@ ApplicationWindow {
                 }
 
                 MapButton {
-                    id: addFishButton
+                    id: addPotButton
                     active: true
-                    activeColor: "#ff8c00"
-                    onClicked: window.addFishRowFromMap()
+                    activeColor: "#6d4c41"
+                    onClicked: window.dropPotFromMap()
 
-                    // Fish outline: body, tail and eye.
+                    // Fishing creel outline: lid, tapered woven body, strap and latch.
                     Shape {
                         anchors.centerIn: parent
                         width: 26; height: 24
                         preferredRendererType: Shape.CurveRenderer
                         ShapePath {
-                            strokeColor: addFishButton.glyphColor
+                            strokeColor: addPotButton.glyphColor
                             strokeWidth: 2
                             fillColor: "transparent"
                             joinStyle: ShapePath.RoundJoin
                             capStyle: ShapePath.RoundCap
-                            PathSvg { path: "M 2 12 Q 9 3 17 12 Q 9 21 2 12 Z M 17 12 L 24 6 L 24 18 Z" }
+                            PathSvg { path: "M 5 9 L 3 22 L 23 22 L 21 9 Z" }
+                            PathSvg { path: "M 4 9 Q 13 1 22 9" }
+                            PathSvg { path: "M 8 5 Q 13 -2 18 5" }
+                        }
+                        ShapePath {
+                            strokeColor: addPotButton.glyphColor
+                            strokeWidth: 1.5
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            PathSvg { path: "M 4.4 14 L 21.6 14 M 3.7 18 L 22.3 18 M 10 9 L 9 22 M 16 9 L 17 22" }
                         }
                         ShapePath {
                             strokeColor: "transparent"
-                            fillColor: addFishButton.glyphColor
-                            PathSvg { path: "M 6 10 a 1.3 1.3 0 1 0 0.01 0 Z" }
+                            fillColor: addPotButton.glyphColor
+                            PathSvg { path: "M 13 10.5 a 1.5 1.5 0 1 0 0.01 0 Z" }
                         }
                     }
                 }
@@ -1272,6 +1357,39 @@ ApplicationWindow {
     }
 
     Dialog {
+        id: potDialog
+        property int potId: 0
+        property date potTime
+        property real potLatitude: 0
+        property real potLongitude: 0
+        modal: true
+        title: qsTr("Pot")
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 24, 340)
+        standardButtons: Dialog.Close
+
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("Dropped %1\n%2, %3")
+                    .arg(potDialog.potTime.toLocaleString())
+                    .arg(potDialog.potLatitude.toFixed(5))
+                    .arg(potDialog.potLongitude.toFixed(5))
+            }
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Delete pot")
+                onClicked: {
+                    appStore.deletePot(potDialog.potId)
+                    potDialog.close()
+                }
+            }
+        }
+    }
+
+    Dialog {
         id: simulatorDialog
         title: qsTr("Vessel simulator (debug)")
         modal: true
@@ -1942,8 +2060,10 @@ ApplicationWindow {
     Dialog {
         id: observationDialog
         property bool pinOnSave: false
+        property int obsId: 0
+        property var obsData: ({})
         modal: true
-        title: qsTr("Record wildlife observation")
+        title: obsId ? qsTr("Edit wildlife observation") : qsTr("Record wildlife observation")
         standardButtons: Dialog.Save | Dialog.Cancel
         anchors.centerIn: parent
         topMargin: 12
@@ -1951,15 +2071,30 @@ ApplicationWindow {
         width: Math.min(parent.width - 24, 520)
 
         onOpened: {
+            if (obsId > 0) {
+                const index = window.animals.indexOf(obsData.animal)
+                animalBox.currentIndex = index >= 0 ? index : 0
+                obsSpecies.text = obsData.species || ""
+                obsDate.text = new Date(Number(obsData.timestamp)).toISOString()
+                obsLatitude.text = obsData.latitude
+                obsLongitude.text = obsData.longitude
+                obsCount.text = obsData.count
+                obsNotes.text = obsData.notes || ""
+                return
+            }
             obsLatitude.text = locationTracker.hasPosition ? locationTracker.latitude : ""
             obsLongitude.text = locationTracker.hasPosition ? locationTracker.longitude : ""
             obsDate.text = new Date().toISOString()
         }
 
-        onClosed: pinOnSave = false
+        onClosed: {
+            pinOnSave = false
+            obsId = 0
+        }
 
         onAccepted: {
             const observation = {
+                id: obsId,
                 animal: animalBox.currentText,
                 species: obsSpecies.text,
                 timestamp: Date.parse(obsDate.text) || Date.now(),

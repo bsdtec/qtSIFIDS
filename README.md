@@ -53,27 +53,52 @@ Without it the map shows grey tiles on Android.
 Install on a device with `adb install -r <apk>`. Debug builds target
 arm64-v8a only; a release build needs your own signing keystore.
 
+`cmake --build build-android --target apk` builds the main app and both test
+apps, so pick `qtSIFIDS.apk` (package `com.bsdtec.qtSIFIDS`) rather than a
+`*_tests.apk`. For a release build, configure a separate directory with
+`-DCMAKE_BUILD_TYPE=Release`; Gradle produces an unsigned APK that must be
+zip-aligned and signed (e.g. `zipalign` + `apksigner`) before it will install.
+
+### Vessel simulator
+
+Unless you configure with `-DCMAKE_BUILD_TYPE=Release` (or `MinSizeRel`) or
+`-DSIFIDS_VESSEL_SIMULATOR=OFF`, an **S** button appears in the map's button
+column. It opens a popup with a compass rose (tap/drag) and a speed slider
+(0-30 kts), and lets you drop a simulated vessel on the map. The simulation
+overrides the GPS position, so tracking, the fishing button, observation and
+FISH1 pin drops, pots and sail plan all work against the simulated boat.
+
 ## Implemented so far
 
 - QML screens for map/track history, FISH1 forms and rows, observations, and
   vessel/owner settings.
-- Local SQLite persistence for forms, form rows, observations, and GPS track
-  points.
+- Local SQLite persistence for forms, form rows, observations, pots, and GPS
+  track points.
 - Foreground location tracking through Qt Positioning and a Qt Location OSM
-  map (pinch/drag/wheel gestures, auto-zoom on first fix, follow mode) with
+  map (pinch/drag/wheel gestures, auto-zoom and re-centre on first fix, follow
+  mode) with
   visible attribution. Tracks are drawn as a dotted red line when not fishing
   and a solid orange line when fishing.
 - Phone-friendly UI: translucent round map buttons (bottom right) for sail
   plan, fishing, tracking (tap to start/stop, long-press for the tracking
-  panel) and follow; dialogs sized to the usable screen area, and ⋮ menus on
-  form and row entries.
+  panel), follow and a + menu; dialogs sized to the usable screen area, and ⋮
+  menus on form and row entries. Map gestures are disabled while a dialog is
+  open.
+- The + menu drops pins at the current position: a FISH1 row, a wildlife
+  observation, or a fishing pot (creel icon). Tapping an F or O pin edits that
+  row or observation; tapping a pot pin shows its details and lets you delete
+  it.
 - New FISH1 rows are pre-filled with the current latitude/longitude when a
   GPS fix is available.
 - FISH1 CSV export and track CSV export (last 24 hours or all history), saved
   through a file dialog so the files are reachable from the Files app.
 - The existing SIFIDS upload endpoint for forms, observations, and locations.
+- Backup in Settings: export the whole SQLite database through a file dialog
+  (suggested name `qtSIFIDS-db-<yyyymmdd>.sqlite`) and import it again, which
+  replaces all data on the device.
 - Additive import of forms, rows, observations, and locations from Android
-  Room database version 15. Select a database copy from Settings; Android app
+  Room database version 15 (`AppStore::importAndroidDatabase`, covered by
+  tests; there is currently no button for it in the UI). Android app
   preferences are not imported.
 - A consent confirmation gate for location recording.
 - A sail plan (float plan) safety feature, enabled from Settings: record a
@@ -103,6 +128,9 @@ same reason tracking does. The Android share sheet (`src/ShareService.cpp`)
 has been built and run; the iOS share sheet (`src/ShareService_ios.mm`) has
 only been reviewed, since there is no Xcode/iOS toolchain available to build
 or test it here — verify it on a Mac before relying on it.
+
+Pots are stored locally and included in database backups, but are not part of
+CSV exports or uploads.
 
 Also not yet ported: the full participant information and consent form, all
 original lookup catalog entries and preference categories, scheduled

@@ -131,6 +131,9 @@ bool AppStore::initialize()
         QStringLiteral("CREATE TABLE IF NOT EXISTS places ("
                        "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
                        "latitude REAL NOT NULL, longitude REAL NOT NULL)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS pots ("
+                       "id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, "
+                       "latitude REAL NOT NULL, longitude REAL NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS locations ("
                        "id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, "
                        "latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy REAL, "
@@ -273,7 +276,9 @@ QVariantList AppStore::mapPins() const
         "SELECT 'row' AS kind, id, latitude, longitude, COALESCE(species, '') AS label "
         "FROM form_rows WHERE on_map = 1 "
         "UNION ALL "
-        "SELECT 'observation', id, latitude, longitude, animal FROM observations WHERE on_map = 1"));
+        "SELECT 'observation', id, latitude, longitude, animal FROM observations WHERE on_map = 1 "
+        "UNION ALL "
+        "SELECT 'pot', id, latitude, longitude, CAST(timestamp AS TEXT) FROM pots"));
 }
 
 QVariantList AppStore::places() const
@@ -543,6 +548,46 @@ bool AppStore::deleteObservation(int observationId)
     }
     emit dataChanged();
     setStatus(tr("Observation deleted."), false);
+    return true;
+}
+
+QVariantMap AppStore::pinRecord(const QString &kind, int id) const
+{
+    const QString table = kind == QLatin1String("row") ? QStringLiteral("form_rows")
+        : kind == QLatin1String("observation") ? QStringLiteral("observations") : QString();
+    if (table.isEmpty())
+        return {};
+    const QVariantList rows = queryRows(QStringLiteral("SELECT * FROM %1 WHERE id = %2").arg(table).arg(id));
+    return rows.isEmpty() ? QVariantMap() : rows.first().toMap();
+}
+
+int AppStore::dropPot(double latitude, double longitude, qint64 timestamp)
+{
+    QSqlQuery query(*m_database);
+    query.prepare(QStringLiteral("INSERT INTO pots(timestamp, latitude, longitude) VALUES(?, ?, ?)"));
+    query.addBindValue(timestamp > 0 ? timestamp : QDateTime::currentMSecsSinceEpoch());
+    query.addBindValue(latitude);
+    query.addBindValue(longitude);
+    if (!query.exec()) {
+        setStatus(tr("Could not save pot: %1").arg(query.lastError().text()));
+        return -1;
+    }
+    emit dataChanged();
+    setStatus(tr("Pot marked."), false);
+    return query.lastInsertId().toInt();
+}
+
+bool AppStore::deletePot(int potId)
+{
+    QSqlQuery query(*m_database);
+    query.prepare(QStringLiteral("DELETE FROM pots WHERE id = ?"));
+    query.addBindValue(potId);
+    if (!query.exec()) {
+        setStatus(tr("Could not delete pot: %1").arg(query.lastError().text()));
+        return false;
+    }
+    emit dataChanged();
+    setStatus(tr("Pot removed."), false);
     return true;
 }
 
