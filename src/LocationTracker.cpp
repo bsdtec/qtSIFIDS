@@ -21,7 +21,7 @@ LocationTracker::LocationTracker(QObject *parent)
         return;
     }
 
-    m_source->setUpdateInterval(30000);
+    m_source->setUpdateInterval(m_pollSeconds * 1000);
     connect(m_source, &QGeoPositionInfoSource::positionUpdated,
             this, &LocationTracker::handlePositionUpdate);
     connect(m_source, &QGeoPositionInfoSource::errorOccurred, this, [this] {
@@ -128,6 +128,19 @@ void LocationTracker::setStatus(const QString &status)
 
     m_status = status;
     emit statusChanged();
+}
+
+int LocationTracker::pollSeconds() const { return m_pollSeconds; }
+
+void LocationTracker::setPollSeconds(int seconds)
+{
+    seconds = qBound(1, seconds, 600);
+    if (seconds == m_pollSeconds)
+        return;
+    m_pollSeconds = seconds;
+    if (m_source)
+        m_source->setUpdateInterval(seconds * 1000);
+    emit pollSecondsChanged();
 }
 
 bool LocationTracker::hasMotion() const { return m_hasMotion; }

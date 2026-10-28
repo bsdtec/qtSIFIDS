@@ -1151,6 +1151,46 @@ ApplicationWindow {
 
                     Rectangle {
                         Layout.fillWidth: true
+                        implicitHeight: gpsColumn.implicitHeight + 24
+                        color: window.cardColor
+                        radius: 8
+                        border.color: window.cardBorder
+
+                        ColumnLayout {
+                            id: gpsColumn
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Label {
+                                text: qsTr("GPS")
+                                font.bold: true
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Poll interval (seconds)")
+                                    wrapMode: Text.Wrap
+                                }
+                                SpinBox {
+                                    id: gpsPollSeconds
+                                    from: 1; to: 600
+                                    value: 30
+                                    editable: true
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("How often a real GPS position is requested. Shorter intervals give smoother tracks and speed/course readings but use more battery. Takes effect when you save.")
+                                wrapMode: Text.Wrap
+                                color: window.mutedText
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
                         implicitHeight: backupColumn.implicitHeight + 24
                         color: window.cardColor
                         radius: 8
@@ -1208,7 +1248,8 @@ ApplicationWindow {
                             consent_confirmed: consentConfirmed.checked,
                             upload_enabled: uploadEnabled.checked,
                             upload_url: uploadUrl.text.trim(),
-                            sail_plan_enabled: sailPlanEnabled.checked
+                            sail_plan_enabled: sailPlanEnabled.checked,
+                            gps_poll_seconds: gpsPollSeconds.value
                         })
                     }
                 }
@@ -1237,6 +1278,7 @@ ApplicationWindow {
         function onDataChanged() {
             const current = appStore.settings()
             sailPlan.enabled = current.sail_plan_enabled === "true"
+            locationTracker.pollSeconds = Number(current.gps_poll_seconds) || 30
             sailPlan.setVesselInfo(current.pln || "", current.vessel_name || "")
         }
     }
@@ -1265,6 +1307,8 @@ ApplicationWindow {
         uploadUrl.text = saved.upload_url || "https://arts.st-andrews.ac.uk/sifids/"
         locationTracker.tracking = true
         sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
+        gpsPollSeconds.value = Number(saved.gps_poll_seconds) || 30
+        locationTracker.pollSeconds = gpsPollSeconds.value
         sailPlan.enabled = sailPlanEnabled.checked
         sailPlan.setVesselInfo(saved.pln || "", saved.vessel_name || "")
         if (appStore.statusNeedsAttention)
@@ -2203,6 +2247,7 @@ ApplicationWindow {
                 uploadEnabled.checked = saved.upload_enabled === "true"
                 uploadUrl.text = saved.upload_url || "https://arts.st-andrews.ac.uk/sifids/"
                 sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
+                gpsPollSeconds.value = Number(saved.gps_poll_seconds) || 30
             }
         }
     }

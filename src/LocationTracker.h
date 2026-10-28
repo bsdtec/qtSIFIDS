@@ -25,6 +25,7 @@ class LocationTracker : public QObject
     Q_PROPERTY(double speedKnots READ speedKnots NOTIFY positionChanged)
     Q_PROPERTY(bool hasCourse READ hasCourse NOTIFY positionChanged)
     Q_PROPERTY(double courseDegrees READ courseDegrees NOTIFY positionChanged)
+    Q_PROPERTY(int pollSeconds READ pollSeconds WRITE setPollSeconds NOTIFY pollSecondsChanged)
     Q_PROPERTY(bool simulatorAvailable READ simulatorAvailable CONSTANT)
     Q_PROPERTY(bool simulating READ simulating NOTIFY simulationChanged)
     Q_PROPERTY(double simHeading READ simHeading NOTIFY simulationChanged)
@@ -45,6 +46,9 @@ public:
     double direction() const;
     QString status() const;
 
+    int pollSeconds() const;
+    void setPollSeconds(int seconds);
+
     bool hasMotion() const;
     double speedKnots() const;
     bool hasCourse() const;
@@ -59,6 +63,7 @@ public:
     Q_INVOKABLE void stopSimulation();
 
 signals:
+    void pollSecondsChanged();
     void simulationChanged();
     void trackingChanged();
     void positionChanged();
@@ -89,6 +94,7 @@ private:
         double latitude;
         double longitude;
     };
+    int m_pollSeconds = 30;
     QList<Sample> m_samples;
     bool m_hasMotion = false;
     double m_speedKnots = 0.0;
