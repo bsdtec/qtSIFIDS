@@ -66,6 +66,42 @@ ApplicationWindow {
         PluginParameter { name: "osm.useragent"; value: "qtSIFIDS/0.1 (com.bsdtec.qtSIFIDS)" }
     }
 
+    // Fishing is only meaningful while tracking, so it resets when tracking stops.
+    property bool fishing: false
+
+    Connections {
+        target: locationTracker
+        function onTrackingChanged() {
+            if (!locationTracker.tracking)
+                window.fishing = false
+        }
+    }
+
+    // Small translucent round map button; children are drawn centred using glyphColor.
+    component MapButton: AbstractButton {
+        id: control
+        property bool active: false
+        property color activeColor: "#1976d2"
+        readonly property color glyphColor: active ? "white" : (window.dark ? "#e6ebe8" : "#37413d")
+        default property alias glyph: glyphHolder.data
+
+        implicitWidth: 48
+        implicitHeight: 48
+
+        background: Rectangle {
+            radius: width / 2
+            color: control.active
+                   ? Qt.rgba(control.activeColor.r, control.activeColor.g, control.activeColor.b, 0.85)
+                   : (window.dark ? "#992b312e" : "#b3ffffff")
+            border.width: 1
+            border.color: control.active ? "white" : (window.dark ? "#66ffffff" : "#33000000")
+            scale: control.down ? 0.92 : 1
+        }
+        contentItem: Item {
+            id: glyphHolder
+        }
+    }
+
     property var animals: [
         "Seal", "Whale", "Dolphin", "Porpoise", "John Dory",
         "Basking Shark", "Wrasse", "Triggerfish", "Octopus"
@@ -87,15 +123,9 @@ ApplicationWindow {
                     font.bold: true
                 }
 
-                Label {
-                    Layout.fillWidth: true
-                    text: appStore.status
-                    color: window.mutedText
-                    elide: Text.ElideRight
-                }
-
                 Button {
                     text: qsTr("Upload pending")
+                    visible: appStore.uploadEnabled
                     enabled: !appStore.uploading
                     onClicked: appStore.uploadPending(appStore.settings().pln || "")
                 }
@@ -160,6 +190,7 @@ ApplicationWindow {
 
                 PinchHandler {
                     id: pinch
+                    enabled: !sailPlanDialog.visible
                     target: null
                     onActiveChanged: if (active) {
                         map.following = false
@@ -178,6 +209,7 @@ ApplicationWindow {
                 }
 
                 DragHandler {
+                    enabled: !sailPlanDialog.visible
                     target: null
                     onTranslationChanged: (delta) => {
                         map.following = false
@@ -361,33 +393,121 @@ ApplicationWindow {
             }
 
             Column {
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.margins: 10
-                spacing: 6
-
-                Button {
-                    text: locationTracker.tracking ? qsTr("Tracking ●") : qsTr("Tracking")
-                    onClicked: trackingDialog.open()
-                }
-
-                Button {
-                    visible: sailPlan.enabled
-                    text: sailPlan.active ? qsTr("Sail plan ●") : qsTr("Sail plan")
-                    onClicked: sailPlanDialog.open()
-                }
-            }
-
-            Button {
                 anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 10
-                visible: !map.following && locationTracker.hasPosition
-                text: qsTr("Follow")
-                onClicked: {
-                    map.following = true
-                    map.center = QtPositioning.coordinate(locationTracker.latitude,
-                                                          locationTracker.longitude)
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 10
+                anchors.bottomMargin: 44
+                spacing: 10
+
+                MapButton {
+                    id: sailButton
+                    visible: sailPlan.enabled
+                    active: sailPlan.active
+                    activeColor: "#1976d2"
+                    onClicked: sailPlanDialog.open()
+
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 22; height: 22
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: sailButton.glyphColor
+                            startX: 11; startY: 1
+                            PathLine { x: 11; y: 15 }
+                            PathLine { x: 3; y: 15 }
+                            PathLine { x: 11; y: 1 }
+                        }
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: sailButton.glyphColor
+                            startX: 13; startY: 5
+                            PathLine { x: 20; y: 15 }
+                            PathLine { x: 13; y: 15 }
+                            PathLine { x: 13; y: 5 }
+                        }
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: sailButton.glyphColor
+                            startX: 2; startY: 17
+                            PathLine { x: 21; y: 17 }
+                            PathLine { x: 18; y: 21 }
+                            PathLine { x: 5; y: 21 }
+                            PathLine { x: 2; y: 17 }
+                        }
+                    }
+                }
+
+                MapButton {
+                    id: fishingButton
+                    active: window.fishing
+                    activeColor: "#ff8c00"
+                    enabled: locationTracker.tracking
+                    opacity: enabled ? 1 : 0.5
+                    onClicked: window.fishing = !window.fishing
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: "F"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: fishingButton.glyphColor
+                    }
+                }
+
+                MapButton {
+                    id: trackingButton
+                    active: locationTracker.tracking
+                    activeColor: "#2e7d32"
+                    onClicked: locationTracker.tracking = !locationTracker.tracking
+                    onPressAndHold: trackingDialog.open()
+
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 20; height: 20
+                        visible: !locationTracker.tracking
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: trackingButton.glyphColor
+                            startX: 4; startY: 1
+                            PathLine { x: 19; y: 10 }
+                            PathLine { x: 4; y: 19 }
+                            PathLine { x: 4; y: 1 }
+                        }
+                    }
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 16; height: 16
+                        radius: 3
+                        visible: locationTracker.tracking
+                        color: trackingButton.glyphColor
+                    }
+                }
+
+                MapButton {
+                    id: followButton
+                    visible: locationTracker.hasPosition
+                    active: map.following
+                    activeColor: "#1976d2"
+                    onClicked: {
+                        map.following = true
+                        map.center = QtPositioning.coordinate(locationTracker.latitude,
+                                                              locationTracker.longitude)
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 22; height: 22
+                        radius: 11
+                        color: "transparent"
+                        border.width: 2
+                        border.color: followButton.glyphColor
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 8; height: 8
+                            radius: 4
+                            color: parent.border.color
+                        }
+                    }
                 }
             }
 
@@ -736,7 +856,7 @@ ApplicationWindow {
     Connections {
         target: locationTracker
         function onLocationReceived(latitude, longitude, accuracy, timestamp) {
-            appStore.recordLocation(latitude, longitude, accuracy, timestamp, fishingToggle.checked)
+            appStore.recordLocation(latitude, longitude, accuracy, timestamp, window.fishing)
         }
         function onPositionChanged() {
             sailPlan.updatePosition(locationTracker.latitude, locationTracker.longitude,
@@ -748,7 +868,9 @@ ApplicationWindow {
     Connections {
         target: appStore
         function onDataChanged() {
-            sailPlan.enabled = appStore.settings().sail_plan_enabled === "true"
+            const current = appStore.settings()
+            sailPlan.enabled = current.sail_plan_enabled === "true"
+            sailPlan.setVesselInfo(current.pln || "", current.vessel_name || "")
         }
     }
 
@@ -777,6 +899,34 @@ ApplicationWindow {
         locationTracker.tracking = true
         sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
         sailPlan.enabled = sailPlanEnabled.checked
+        sailPlan.setVesselInfo(saved.pln || "", saved.vessel_name || "")
+        if (appStore.statusNeedsAttention)
+            statusDialog.open()
+    }
+
+    Connections {
+        target: appStore
+        function onStatusChanged() {
+            if (appStore.statusNeedsAttention)
+                statusDialog.open()
+        }
+    }
+
+    Dialog {
+        id: statusDialog
+        modal: true
+        title: qsTr("Notice")
+        standardButtons: Dialog.Ok
+        anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
+        width: Math.min(parent.width - 24, 480)
+
+        contentItem: Label {
+            text: appStore.status
+            font.pixelSize: 18
+            wrapMode: Text.Wrap
+        }
     }
 
     Dialog {
@@ -801,18 +951,11 @@ ApplicationWindow {
                     wrapMode: Text.Wrap
                 }
 
-                Button {
+                Label {
                     Layout.fillWidth: true
-                    text: locationTracker.tracking
-                          ? qsTr("Stop tracking")
-                          : qsTr("Start tracking")
-                    onClicked: locationTracker.tracking = !locationTracker.tracking
-                }
-
-                Switch {
-                    id: fishingToggle
-                    text: qsTr("Currently fishing")
-                    enabled: locationTracker.tracking
+                    text: qsTr("Use the map buttons to start or stop tracking and to mark when you are fishing. Long-press the tracking button to open this panel.")
+                    color: window.mutedText
+                    wrapMode: Text.Wrap
                 }
 
                 ComboBox {
@@ -887,12 +1030,18 @@ ApplicationWindow {
                 sailPlan.setDepartureTime(new Date())
         }
 
-        contentItem: ScrollView {
+        contentItem: Flickable {
             id: sailPlanScroll
             clip: true
-            contentWidth: availableWidth
+            flickableDirection: Flickable.VerticalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: planColumn.implicitHeight
+            implicitHeight: planColumn.implicitHeight
+            ScrollIndicator.vertical: ScrollIndicator {}
             ColumnLayout {
-                width: sailPlanScroll.availableWidth
+                id: planColumn
+                width: sailPlanScroll.width
                 spacing: 12
 
                 Label {

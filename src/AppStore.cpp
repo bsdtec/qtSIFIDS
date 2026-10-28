@@ -82,12 +82,12 @@ AppStore::AppStore(QObject *parent)
     const QString dataDirectory = QStandardPaths::writableLocation(
         QStandardPaths::AppDataLocation);
     if (!QDir().mkpath(dataDirectory)) {
-        setStatus(tr("Could not create the application data directory."));
+        setStatus(tr("Could not create the application data directory."), true);
         return;
     }
     m_database->setDatabaseName(dataDirectory + QStringLiteral("/sifids.sqlite"));
     if (!m_database->open()) {
-        setStatus(tr("Could not open local database: %1").arg(m_database->lastError().text()));
+        setStatus(tr("Could not open local database: %1").arg(m_database->lastError().text()), true);
         return;
     }
     initialize();
@@ -140,7 +140,7 @@ bool AppStore::initialize()
         if (!execute(statement))
             return false;
     }
-    setStatus(tr("Local data is ready."));
+    setStatus(tr("Local data is ready."), false);
     return true;
 }
 
@@ -150,19 +150,21 @@ bool AppStore::execute(const QString &sql) const
     if (query.exec(sql))
         return true;
     const_cast<AppStore *>(this)->setStatus(
-        tr("Database error: %1").arg(query.lastError().text()));
+        tr("Database error: %1").arg(query.lastError().text()), true);
     return false;
 }
 
-void AppStore::setStatus(const QString &status)
+void AppStore::setStatus(const QString &status, bool needsAttention)
 {
-    if (m_status == status)
+    if (m_status == status && m_statusNeedsAttention == needsAttention)
         return;
     m_status = status;
+    m_statusNeedsAttention = needsAttention;
     emit statusChanged();
 }
 
 QString AppStore::status() const { return m_status; }
+bool AppStore::statusNeedsAttention() const { return m_statusNeedsAttention; }
 bool AppStore::uploading() const { return m_uploading; }
 
 bool AppStore::consented() const
@@ -204,15 +206,15 @@ QString AppStore::uploadUrl() const
 bool AppStore::uploadAllowed()
 {
     if (!uploadEnabled()) {
-        setStatus(tr("Uploads are turned off in Settings."));
+        setStatus(tr("Uploads are turned off in Settings."), true);
         return false;
     }
     if (!consented()) {
-        setStatus(tr("Complete participant consent in Settings before uploading."));
+        setStatus(tr("Complete participant consent in Settings before uploading."), true);
         return false;
     }
     if (uploadUrl().isEmpty()) {
-        setStatus(tr("The upload URL in Settings is not a valid http(s) address."));
+        setStatus(tr("The upload URL in Settings is not a valid http(s) address."), true);
         return false;
     }
     return true;
@@ -309,7 +311,7 @@ bool AppStore::saveSettings(const QVariantMap &values)
             return false;
         }
     }
-    setStatus(tr("Settings saved."));
+    setStatus(tr("Settings saved."), false);
     emit dataChanged();
     return true;
 }
@@ -341,7 +343,7 @@ int AppStore::saveForm(const QVariantMap &form)
             setStatus(tr("Could not save FISH1 form: %1").arg(query.lastError().text()));
             return 0;
         }
-        setStatus(tr("FISH1 form saved."));
+        setStatus(tr("FISH1 form saved."), false);
         emit dataChanged();
         return id.toInt();
     }
@@ -365,7 +367,7 @@ int AppStore::saveForm(const QVariantMap &form)
         setStatus(tr("Could not create FISH1 form: %1").arg(query.lastError().text()));
         return 0;
     }
-    setStatus(tr("FISH1 form created."));
+    setStatus(tr("FISH1 form created."), false);
     emit dataChanged();
     return query.lastInsertId().toInt();
 }
@@ -380,7 +382,7 @@ bool AppStore::deleteForm(int formId)
         return false;
     }
     emit dataChanged();
-    setStatus(tr("FISH1 form deleted."));
+    setStatus(tr("FISH1 form deleted."), false);
     return true;
 }
 
@@ -439,7 +441,7 @@ int AppStore::saveFormRow(const QVariantMap &row)
         setStatus(tr("Could not save FISH1 row: %1").arg(query.lastError().text()));
         return 0;
     }
-    setStatus(tr("FISH1 row saved."));
+    setStatus(tr("FISH1 row saved."), false);
     emit dataChanged();
     return id.isValid() && id.toInt() > 0 ? id.toInt() : query.lastInsertId().toInt();
 }
@@ -454,7 +456,7 @@ bool AppStore::deleteFormRow(int rowId)
         return false;
     }
     emit dataChanged();
-    setStatus(tr("FISH1 row deleted."));
+    setStatus(tr("FISH1 row deleted."), false);
     return true;
 }
 
@@ -493,7 +495,7 @@ int AppStore::saveObservation(const QVariantMap &observation)
         return 0;
     }
     emit dataChanged();
-    setStatus(tr("Observation saved."));
+    setStatus(tr("Observation saved."), false);
     return id.isValid() && id.toInt() > 0 ? id.toInt() : query.lastInsertId().toInt();
 }
 
@@ -507,7 +509,7 @@ bool AppStore::deleteObservation(int observationId)
         return false;
     }
     emit dataChanged();
-    setStatus(tr("Observation deleted."));
+    setStatus(tr("Observation deleted."), false);
     return true;
 }
 
@@ -528,7 +530,7 @@ int AppStore::savePlace(const QString &name, double latitude, double longitude)
         return -1;
     }
     emit placesChanged();
-    setStatus(tr("Place saved."));
+    setStatus(tr("Place saved."), false);
     return query.lastInsertId().toInt();
 }
 
@@ -627,7 +629,7 @@ QString AppStore::exportTrackCsv(bool lastDayOnly, const QString &destination)
     const QString filePath = writeExportFile(destination, defaultName, csv);
     if (filePath.isEmpty())
         return {};
-    setStatus(tr("Track CSV (%1 points) exported to %2").arg(count).arg(filePath));
+    setStatus(tr("Track CSV (%1 points) exported to %2").arg(count).arg(filePath), false);
     return filePath;
 }
 
@@ -689,7 +691,7 @@ QString AppStore::exportFormCsv(int formId, const QString &destination)
     const QString filePath = writeExportFile(destination, fileName + QStringLiteral(".csv"), csv);
     if (filePath.isEmpty())
         return {};
-    setStatus(tr("FISH1 CSV exported to %1").arg(filePath));
+    setStatus(tr("FISH1 CSV exported to %1").arg(filePath), false);
     return filePath;
 }
 
@@ -901,7 +903,7 @@ bool AppStore::importAndroidDatabase(const QString &filePath)
 
     emit dataChanged();
     setStatus(tr("Android forms, rows, observations and track history were imported. "
-                 "Review Settings and consent details separately."));
+                 "Review Settings and consent details separately."), false);
     return true;
 }
 
@@ -970,7 +972,7 @@ void AppStore::uploadPending(const QString &vesselPln)
 
     m_uploading = true;
     emit uploadingChanged();
-    setStatus(tr("Uploading pending data…"));
+    setStatus(tr("Uploading pending data…"), false);
 
     const QUrl endpoint(uploadUrl());
     if (!locationIds.isEmpty()) {
@@ -1073,7 +1075,7 @@ void AppStore::finishUploads()
     m_uploading = false;
     emit uploadingChanged();
     if (m_status == tr("Uploading pending data…"))
-        setStatus(tr("Pending data upload complete."));
+        setStatus(tr("Pending data upload complete."), false);
 }
 
 void AppStore::uploadFormCsv(int formId, const QString &vesselPln)
@@ -1117,7 +1119,7 @@ void AppStore::uploadFormCsv(int formId, const QString &vesselPln)
     m_uploading = true;
     m_pendingUploads = 1;
     emit uploadingChanged();
-    setStatus(tr("Uploading FISH1 form…"));
+    setStatus(tr("Uploading FISH1 form…"), false);
 
     QNetworkRequest request{QUrl(uploadUrl())};
     QNetworkReply *reply = m_network->post(request, multipart);
@@ -1126,7 +1128,7 @@ void AppStore::uploadFormCsv(int formId, const QString &vesselPln)
         const bool success = reply->error() == QNetworkReply::NoError
             && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() < 400;
         if (success)
-            setStatus(tr("FISH1 form uploaded."));
+            setStatus(tr("FISH1 form uploaded."), false);
         else
             setStatus(tr("FISH1 form upload failed: %1").arg(reply->errorString()));
         reply->deleteLater();

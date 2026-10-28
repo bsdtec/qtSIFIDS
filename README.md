@@ -63,8 +63,10 @@ arm64-v8a only; a release build needs your own signing keystore.
   map (pinch/drag/wheel gestures, auto-zoom on first fix, follow mode) with
   visible attribution. Tracks are drawn as a dotted red line when not fishing
   and a solid orange line when fishing.
-- Phone-friendly UI: tracking controls in a pop-up, dialogs sized to the
-  usable screen area, and ⋮ menus on form and row entries.
+- Phone-friendly UI: translucent round map buttons (bottom right) for sail
+  plan, fishing, tracking (tap to start/stop, long-press for the tracking
+  panel) and follow; dialogs sized to the usable screen area, and ⋮ menus on
+  form and row entries.
 - New FISH1 rows are pre-filled with the current latitude/longitude when a
   GPS fix is available.
 - FISH1 CSV export and track CSV export (last 24 hours or all history), saved

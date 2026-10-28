@@ -23,6 +23,7 @@ class AppStore : public QObject
     Q_PROPERTY(QVariantList states READ states CONSTANT)
     Q_PROPERTY(QVariantList presentations READ presentations CONSTANT)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool statusNeedsAttention READ statusNeedsAttention NOTIFY statusChanged)
     Q_PROPERTY(bool uploading READ uploading NOTIFY uploadingChanged)
     Q_PROPERTY(bool consented READ consented NOTIFY dataChanged)
     Q_PROPERTY(bool uploadEnabled READ uploadEnabled NOTIFY dataChanged)
@@ -42,6 +43,7 @@ public:
     QVariantList states() const;
     QVariantList presentations() const;
     QString status() const;
+    bool statusNeedsAttention() const;
     bool uploading() const;
     bool consented() const;
     bool uploadEnabled() const;
@@ -78,7 +80,7 @@ private:
     bool execute(const QString &sql) const;
     void finishUploads();
     bool uploadAllowed();
-    void setStatus(const QString &status);
+    void setStatus(const QString &status, bool needsAttention = true);
     QString writeExportFile(const QString &destination, const QString &defaultName,
                             const QString &contents);
     QVariantList queryRows(const QString &sql) const;
@@ -87,6 +89,7 @@ private:
     QSqlDatabase *m_database = nullptr;
     QNetworkAccessManager *m_network = nullptr;
     QString m_status;
+    bool m_statusNeedsAttention = false;
     bool m_uploading = false;
     int m_pendingUploads = 0;
 };
