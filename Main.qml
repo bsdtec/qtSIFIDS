@@ -69,6 +69,9 @@ ApplicationWindow {
     // Fishing is only meaningful while tracking, so it resets when tracking stops.
     property bool fishing: false
     property bool addMenuOpen: false
+    readonly property bool dialogOpen: sailPlanDialog.visible || simulatorDialog.visible
+        || rowDialog.visible || observationDialog.visible
+        || statusDialog.visible || mapNoticeDialog.visible
 
     function showNotice(message) {
         mapNoticeLabel.text = message
@@ -264,7 +267,7 @@ ApplicationWindow {
 
                 PinchHandler {
                     id: pinch
-                    enabled: !sailPlanDialog.visible
+                    enabled: !window.dialogOpen
                     target: null
                     onActiveChanged: if (active) {
                         map.following = false
@@ -278,12 +281,13 @@ ApplicationWindow {
                 }
 
                 WheelHandler {
+                    enabled: !window.dialogOpen
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     onWheel: (event) => map.zoomLevel += event.angleDelta.y / 240
                 }
 
                 DragHandler {
-                    enabled: !sailPlanDialog.visible
+                    enabled: !window.dialogOpen
                     target: null
                     onTranslationChanged: (delta) => {
                         map.following = false
@@ -312,8 +316,15 @@ ApplicationWindow {
                             sailPlan.setDeparturePoint(coordinate.latitude, coordinate.longitude)
                         else if (map.pickingMode === "destination")
                             sailPlan.setDestinationPoint(coordinate.latitude, coordinate.longitude)
+                        const picked = map.pickingMode
                         map.pickingMode = ""
-                        sailPlanDialog.open()
+                        if (picked === "simulator") {
+                            locationTracker.startSimulation(coordinate.latitude, coordinate.longitude)
+                            map.following = true
+                            simulatorDialog.open()
+                        } else {
+                            sailPlanDialog.open()
+                        }
                     }
                 }
 
@@ -629,6 +640,22 @@ ApplicationWindow {
                 }
 
                 MapButton {
+                    id: simulatorButton
+                    visible: locationTracker.simulatorAvailable
+                    active: locationTracker.simulating
+                    activeColor: "#00838f"
+                    onClicked: simulatorDialog.open()
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: "S"
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: simulatorButton.glyphColor
+                    }
+                }
+
+                MapButton {
                     id: fishingButton
                     active: window.fishing
                     activeColor: "#ff8c00"
@@ -710,13 +737,19 @@ ApplicationWindow {
                     Label {
                         text: map.pickingMode === "departure"
                               ? qsTr("Tap the map to set the departure point")
-                              : qsTr("Tap the map to set the destination point")
+                              : map.pickingMode === "simulator"
+                                ? qsTr("Tap the map to drop the simulated vessel")
+                                : qsTr("Tap the map to set the destination point")
                     }
                     Button {
                         text: qsTr("Cancel")
                         onClicked: {
+                            const cancelled = map.pickingMode
                             map.pickingMode = ""
-                            sailPlanDialog.open()
+                            if (cancelled === "simulator")
+                                simulatorDialog.open()
+                            else
+                                sailPlanDialog.open()
                         }
                     }
                 }
@@ -922,31 +955,6 @@ ApplicationWindow {
                         color: window.mutedText
                     }
 
-                    Button {
-                        text: qsTr("Save defaults")
-                        onClicked: appStore.saveSettings({
-                            pln: prefPln.text,
-                            vessel_name: prefVessel.text,
-                            owner_master: prefOwner.text,
-                            address: prefAddress.text,
-                            owner_email: prefOwnerEmail.text,
-                            fishery_office: prefFisheryOffice.text,
-                            fishery_office_email: prefOfficeEmail.text,
-                            consent_name: consentName.text,
-                            consent_email: consentEmail.text,
-                            consent_phone: consentPhone.text,
-                            consent_confirmed: consentConfirmed.checked,
-                            upload_enabled: uploadEnabled.checked,
-                            upload_url: uploadUrl.text.trim(),
-                            sail_plan_enabled: sailPlanEnabled.checked
-                        })
-                    }
-
-                    Button {
-                        text: qsTr("Import Android database (version 15)…")
-                        onClicked: legacyDatabasePicker.open()
-                    }
-
                     Rectangle {
                         Layout.fillWidth: true
                         implicitHeight: consentColumn.implicitHeight + 24
@@ -1023,6 +1031,69 @@ ApplicationWindow {
                                 text: qsTr("Enable sail plan check-ins")
                             }
                         }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: backupColumn.implicitHeight + 24
+                        color: window.cardColor
+                        radius: 8
+                        border.color: window.cardBorder
+
+                        ColumnLayout {
+                            id: backupColumn
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Label {
+                                text: qsTr("Backup")
+                                font.bold: true
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Save a copy of the whole database, or restore one. Restoring replaces all data currently on this device.")
+                                wrapMode: Text.Wrap
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Export database…")
+                                    onClicked: {
+                                        databaseExportDialog.currentFile = "qtSIFIDS-db-"
+                                            + Qt.formatDate(new Date(), "yyyyMMdd") + ".sqlite"
+                                        databaseExportDialog.open()
+                                    }
+                                }
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Import database…")
+                                    onClicked: databaseImportDialog.open()
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: qsTr("Save defaults")
+                        onClicked: appStore.saveSettings({
+                            pln: prefPln.text,
+                            vessel_name: prefVessel.text,
+                            owner_master: prefOwner.text,
+                            address: prefAddress.text,
+                            owner_email: prefOwnerEmail.text,
+                            fishery_office: prefFisheryOffice.text,
+                            fishery_office_email: prefOfficeEmail.text,
+                            consent_name: consentName.text,
+                            consent_email: consentEmail.text,
+                            consent_phone: consentPhone.text,
+                            consent_confirmed: consentConfirmed.checked,
+                            upload_enabled: uploadEnabled.checked,
+                            upload_url: uploadUrl.text.trim(),
+                            sail_plan_enabled: sailPlanEnabled.checked
+                        })
                     }
                 }
             }
@@ -1198,6 +1269,157 @@ ApplicationWindow {
             }
 
         }
+    }
+
+    Dialog {
+        id: simulatorDialog
+        title: qsTr("Vessel simulator (debug)")
+        modal: true
+        anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
+        width: Math.min(parent.width - 24, 380)
+        height: Math.min(implicitHeight, window.dialogMaxHeight)
+        property real heading: 0
+        property real speed: 5
+
+        function apply() {
+            locationTracker.setSimulation(heading, speed)
+        }
+        onOpened: {
+            if (locationTracker.simulating) {
+                heading = locationTracker.simHeading
+                speed = locationTracker.simSpeed
+            }
+            compass.requestPaint()
+        }
+        onHeadingChanged: compass.requestPaint()
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Canvas {
+                id: compass
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: Math.min(240, simulatorDialog.width - 60)
+                Layout.preferredHeight: Layout.preferredWidth
+
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.reset()
+                    const cx = width / 2, cy = height / 2, r = width / 2 - 22
+                    const fg = window.dark ? "#e6ebe8" : "#37413d"
+                    ctx.strokeStyle = fg
+                    ctx.fillStyle = fg
+                    ctx.lineWidth = 2
+                    ctx.beginPath()
+                    ctx.arc(cx, cy, r, 0, 2 * Math.PI)
+                    ctx.stroke()
+                    for (let d = 0; d < 360; d += 10) {
+                        const a = (d - 90) * Math.PI / 180
+                        const len = d % 90 === 0 ? 14 : (d % 30 === 0 ? 9 : 5)
+                        ctx.beginPath()
+                        ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+                        ctx.lineTo(cx + Math.cos(a) * (r - len), cy + Math.sin(a) * (r - len))
+                        ctx.stroke()
+                    }
+                    ctx.font = "bold 16px sans-serif"
+                    ctx.textAlign = "center"
+                    ctx.textBaseline = "middle"
+                    const names = ["N", "E", "S", "W"]
+                    for (let i = 0; i < 4; ++i) {
+                        const a = (i * 90 - 90) * Math.PI / 180
+                        ctx.fillText(names[i], cx + Math.cos(a) * (r + 13), cy + Math.sin(a) * (r + 13))
+                    }
+                    const h = (simulatorDialog.heading - 90) * Math.PI / 180
+                    ctx.strokeStyle = "#d8493e"
+                    ctx.fillStyle = "#d8493e"
+                    ctx.lineWidth = 4
+                    ctx.beginPath()
+                    ctx.moveTo(cx - Math.cos(h) * r * 0.3, cy - Math.sin(h) * r * 0.3)
+                    ctx.lineTo(cx + Math.cos(h) * (r - 16), cy + Math.sin(h) * (r - 16))
+                    ctx.stroke()
+                    ctx.beginPath()
+                    ctx.moveTo(cx + Math.cos(h) * (r - 2), cy + Math.sin(h) * (r - 2))
+                    ctx.lineTo(cx + Math.cos(h + 0.25) * (r - 24), cy + Math.sin(h + 0.25) * (r - 24))
+                    ctx.lineTo(cx + Math.cos(h - 0.25) * (r - 24), cy + Math.sin(h - 0.25) * (r - 24))
+                    ctx.closePath()
+                    ctx.fill()
+                }
+
+                function setFromPoint(x, y) {
+                    const deg = Math.atan2(x - width / 2, -(y - height / 2)) * 180 / Math.PI
+                    simulatorDialog.heading = Math.round((deg + 360) % 360)
+                    simulatorDialog.apply()
+                }
+                TapHandler { onTapped: (point) => compass.setFromPoint(point.position.x, point.position.y) }
+                DragHandler {
+                    target: null
+                    onCentroidChanged: if (active) compass.setFromPoint(centroid.position.x, centroid.position.y)
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Heading (°)") }
+                SpinBox {
+                    Layout.fillWidth: true
+                    from: 0; to: 359
+                    editable: true
+                    wrap: true
+                    value: Math.round(simulatorDialog.heading)
+                    onValueModified: {
+                        simulatorDialog.heading = value
+                        simulatorDialog.apply()
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Speed (kts)") }
+                Slider {
+                    Layout.fillWidth: true
+                    from: 0; to: 30; stepSize: 0.5
+                    value: simulatorDialog.speed
+                    onMoved: {
+                        simulatorDialog.speed = value
+                        simulatorDialog.apply()
+                    }
+                }
+                Label { text: simulatorDialog.speed.toFixed(1); Layout.preferredWidth: 36 }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: locationTracker.simulating
+                text: qsTr("Position %1, %2")
+                    .arg(locationTracker.latitude.toFixed(5))
+                    .arg(locationTracker.longitude.toFixed(5))
+                color: window.mutedText
+                wrapMode: Text.Wrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Button {
+                    Layout.fillWidth: true
+                    text: locationTracker.simulating ? qsTr("Move vessel…") : qsTr("Drop vessel on map…")
+                    onClicked: {
+                        simulatorDialog.apply()
+                        simulatorDialog.close()
+                        map.pickingMode = "simulator"
+                    }
+                }
+                Button {
+                    Layout.fillWidth: true
+                    text: qsTr("Stop")
+                    enabled: locationTracker.simulating
+                    onClicked: locationTracker.stopSimulation()
+                }
+            }
+        }
+        standardButtons: Dialog.Close
     }
 
     Dialog {
@@ -1785,9 +2007,37 @@ ApplicationWindow {
     }
 
     FileDialog {
-        id: legacyDatabasePicker
-        title: qsTr("Select an exported SIFIDS Android database")
-        nameFilters: [qsTr("SQLite databases (*.sqlite *.db *database*)"), qsTr("All files (*)")]
-        onAccepted: appStore.importAndroidDatabase(selectedFile.toString())
+        id: databaseExportDialog
+        title: qsTr("Save database backup")
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "sqlite"
+        nameFilters: [qsTr("SQLite databases (*.sqlite *.db)"), qsTr("All files (*)")]
+        onAccepted: appStore.exportDatabase(selectedFile.toString())
+    }
+
+    FileDialog {
+        id: databaseImportDialog
+        title: qsTr("Select a SIFIDS database backup")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("SQLite databases (*.sqlite *.db)"), qsTr("All files (*)")]
+        onAccepted: {
+            if (appStore.importDatabase(selectedFile.toString())) {
+                const saved = appStore.settings()
+                prefPln.text = saved.pln || ""
+                prefVessel.text = saved.vessel_name || ""
+                prefOwner.text = saved.owner_master || ""
+                prefAddress.text = saved.address || ""
+                prefOwnerEmail.text = saved.owner_email || ""
+                prefFisheryOffice.text = saved.fishery_office || ""
+                prefOfficeEmail.text = saved.fishery_office_email || ""
+                consentName.text = saved.consent_name || ""
+                consentEmail.text = saved.consent_email || ""
+                consentPhone.text = saved.consent_phone || ""
+                consentConfirmed.checked = saved.consent_confirmed === "true"
+                uploadEnabled.checked = saved.upload_enabled === "true"
+                uploadUrl.text = saved.upload_url || "https://arts.st-andrews.ac.uk/sifids/"
+                sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
+            }
+        }
     }
 }

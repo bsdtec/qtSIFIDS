@@ -85,7 +85,8 @@ AppStore::AppStore(QObject *parent)
         setStatus(tr("Could not create the application data directory."), true);
         return;
     }
-    m_database->setDatabaseName(dataDirectory + QStringLiteral("/sifids.sqlite"));
+    m_databasePath = dataDirectory + QStringLiteral("/sifids.sqlite");
+    m_database->setDatabaseName(m_databasePath);
     if (!m_database->open()) {
         setStatus(tr("Could not open local database: %1").arg(m_database->lastError().text()), true);
         return;
@@ -725,6 +726,124 @@ QString AppStore::exportFormCsv(int formId, const QString &destination)
         return {};
     setStatus(tr("FISH1 CSV exported to %1").arg(filePath), false);
     return filePath;
+}
+
+QString AppStore::exportDatabase(const QString &destination)
+{
+    const QUrl url(destination);
+    const QString target = url.isLocalFile() ? url.toLocalFile() : destination;
+    if (target.trimmed().isEmpty()) {
+        setStatus(tr("Choose where to save the backup."));
+        return {};
+    }
+
+    // VACUUM INTO gives a consistent snapshot; it is then copied byte-wise so content:// targets work.
+    const QString snapshot = m_databasePath + QStringLiteral(".backup");
+    QFile::remove(snapshot);
+    QString escaped = snapshot;
+    escaped.replace(QLatin1Char('\''), QStringLiteral("''"));
+    if (!execute(QStringLiteral("VACUUM INTO '%1'").arg(escaped)))
+        return {};
+
+    QFile in(snapshot);
+    QFile out(target);
+    bool ok = in.open(QIODevice::ReadOnly) && out.open(QIODevice::WriteOnly | QIODevice::Truncate);
+    QString error;
+    if (ok) {
+        const QByteArray data = in.readAll();
+        ok = out.write(data) == data.size();
+    }
+    error = in.isOpen() ? out.errorString() : in.errorString();
+    in.close();
+    out.close();
+    QFile::remove(snapshot);
+    if (!ok) {
+        setStatus(tr("Could not write backup: %1").arg(error));
+        return {};
+    }
+    setStatus(tr("Database backup saved to %1").arg(target), false);
+    return target;
+}
+
+bool AppStore::importDatabase(const QString &source)
+{
+    const QUrl url(source);
+    const QString sourcePath = url.isLocalFile() ? url.toLocalFile() : source;
+    QFile in(sourcePath);
+    if (!in.open(QIODevice::ReadOnly)) {
+        setStatus(tr("Could not read backup: %1").arg(in.errorString()));
+        return false;
+    }
+
+    const QString staged = m_databasePath + QStringLiteral(".import");
+    QFile::remove(staged);
+    QFile out(staged);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        setStatus(tr("Could not prepare import: %1").arg(out.errorString()));
+        return false;
+    }
+    const QByteArray data = in.readAll();
+    const bool written = out.write(data) == data.size();
+    out.close();
+    in.close();
+    if (!written) {
+        QFile::remove(staged);
+        setStatus(tr("Could not prepare import."));
+        return false;
+    }
+
+    bool valid = false;
+    const QString checkName = QStringLiteral("backup-check-%1").arg(reinterpret_cast<quintptr>(this));
+    {
+        QSqlDatabase check = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), checkName);
+        check.setDatabaseName(staged);
+        check.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        if (check.open()) {
+            QSet<QString> tables;
+            QSqlQuery query(check);
+            if (query.exec(QStringLiteral("SELECT name FROM sqlite_master WHERE type='table'"))) {
+                while (query.next())
+                    tables.insert(query.value(0).toString());
+            }
+            valid = tables.contains(QStringLiteral("settings"))
+                && tables.contains(QStringLiteral("forms"))
+                && tables.contains(QStringLiteral("form_rows"))
+                && tables.contains(QStringLiteral("observations"))
+                && tables.contains(QStringLiteral("locations"));
+            query.finish();
+            check.close();
+        }
+    }
+    QSqlDatabase::removeDatabase(checkName);
+    if (!valid) {
+        QFile::remove(staged);
+        setStatus(tr("The selected file is not a SIFIDS database backup."));
+        return false;
+    }
+
+    m_database->close();
+    QFile::remove(m_databasePath + QStringLiteral("-wal"));
+    QFile::remove(m_databasePath + QStringLiteral("-shm"));
+    QFile::remove(m_databasePath + QStringLiteral("-journal"));
+    QFile::remove(m_databasePath);
+    const bool moved = QFile::rename(staged, m_databasePath);
+    if (!moved)
+        QFile::remove(staged);
+    if (!m_database->open()) {
+        setStatus(tr("Could not reopen local database: %1").arg(m_database->lastError().text()), true);
+        return false;
+    }
+    if (!moved) {
+        setStatus(tr("Could not replace the local database."));
+        initialize();
+        return false;
+    }
+    if (!initialize())
+        return false;
+    emit dataChanged();
+    emit placesChanged();
+    setStatus(tr("Database restored from backup."), false);
+    return true;
 }
 
 bool AppStore::importAndroidDatabase(const QString &filePath)

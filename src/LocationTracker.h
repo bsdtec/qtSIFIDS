@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
 class QGeoPositionInfo;
@@ -19,6 +20,10 @@ class LocationTracker : public QObject
     Q_PROPERTY(bool hasDirection READ hasDirection NOTIFY positionChanged)
     Q_PROPERTY(double direction READ direction NOTIFY positionChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool simulatorAvailable READ simulatorAvailable CONSTANT)
+    Q_PROPERTY(bool simulating READ simulating NOTIFY simulationChanged)
+    Q_PROPERTY(double simHeading READ simHeading NOTIFY simulationChanged)
+    Q_PROPERTY(double simSpeed READ simSpeed NOTIFY simulationChanged)
 
 public:
     explicit LocationTracker(QObject *parent = nullptr);
@@ -35,7 +40,16 @@ public:
     double direction() const;
     QString status() const;
 
+    bool simulatorAvailable() const;
+    bool simulating() const;
+    double simHeading() const;
+    double simSpeed() const;
+    Q_INVOKABLE void startSimulation(double latitude, double longitude);
+    Q_INVOKABLE void setSimulation(double headingDegrees, double speedKnots);
+    Q_INVOKABLE void stopSimulation();
+
 signals:
+    void simulationChanged();
     void trackingChanged();
     void positionChanged();
     void statusChanged();
@@ -55,4 +69,12 @@ private:
     bool m_hasDirection = false;
     double m_direction = 0.0;
     QString m_status;
+
+    void advanceSimulation();
+
+    QTimer m_simTimer;
+    bool m_simulating = false;
+    double m_simHeading = 0.0;
+    double m_simSpeed = 0.0;
+    int m_simTicks = 0;
 };

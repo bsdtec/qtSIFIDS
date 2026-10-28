@@ -117,6 +117,11 @@ target_link_libraries(qtSIFIDS PRIVATE
     Qt6::Sql
 )
 
+option(SIFIDS_VESSEL_SIMULATOR "Enable the debug vessel simulator" ON)
+if(SIFIDS_VESSEL_SIMULATOR AND NOT CMAKE_BUILD_TYPE MATCHES "^(Release|MinSizeRel)$")
+    target_compile_definitions(qtSIFIDS PRIVATE SIFIDS_VESSEL_SIMULATOR)
+endif()
+
 include(GNUInstallDirs)
 install(TARGETS qtSIFIDS
     BUNDLE DESTINATION .

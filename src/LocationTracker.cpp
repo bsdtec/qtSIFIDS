@@ -5,11 +5,15 @@
 #include <QGeoPositionInfoSource>
 #include <QLocationPermission>
 #include <QVariant>
+#include <QDateTime>
+#include <QtMath>
 
 LocationTracker::LocationTracker(QObject *parent)
     : QObject(parent),
       m_source(QGeoPositionInfoSource::createDefaultSource(this))
 {
+    m_simTimer.setInterval(1000);
+    connect(&m_simTimer, &QTimer::timeout, this, &LocationTracker::advanceSimulation);
     if (!m_source) {
         setStatus(tr("No location provider is available on this device."));
         return;
@@ -37,6 +41,8 @@ bool LocationTracker::tracking() const
 
 void LocationTracker::setTracking(bool tracking)
 {
+    if (m_simulating && !tracking)
+        stopSimulation();
     if (m_tracking == tracking)
         return;
 
@@ -121,8 +127,94 @@ void LocationTracker::setStatus(const QString &status)
     emit statusChanged();
 }
 
+bool LocationTracker::simulatorAvailable() const
+{
+#ifdef SIFIDS_VESSEL_SIMULATOR
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool LocationTracker::simulating() const { return m_simulating; }
+double LocationTracker::simHeading() const { return m_simHeading; }
+double LocationTracker::simSpeed() const { return m_simSpeed; }
+
+void LocationTracker::startSimulation(double latitude, double longitude)
+{
+    if (!simulatorAvailable())
+        return;
+    if (!m_simulating && m_tracking && m_source)
+        m_source->stopUpdates();
+
+    m_simulating = true;
+    const bool wasTracking = m_tracking;
+    m_tracking = true;
+    m_latitude = qBound(-85.0, latitude, 85.0);
+    m_longitude = longitude;
+    m_accuracy = 5.0;
+    m_hasPosition = true;
+    m_hasDirection = true;
+    m_direction = m_simHeading;
+    m_simTicks = 0;
+    m_simTimer.start();
+    setStatus(tr("Simulated vessel active."));
+    if (!wasTracking)
+        emit trackingChanged();
+    emit simulationChanged();
+    emit positionChanged();
+    emit locationReceived(m_latitude, m_longitude, m_accuracy,
+                          QDateTime::currentMSecsSinceEpoch());
+}
+
+void LocationTracker::setSimulation(double headingDegrees, double speedKnots)
+{
+    m_simHeading = std::fmod(std::fmod(headingDegrees, 360.0) + 360.0, 360.0);
+    m_simSpeed = qMax(0.0, speedKnots);
+    if (m_simulating) {
+        m_direction = m_simHeading;
+        emit positionChanged();
+    }
+    emit simulationChanged();
+}
+
+void LocationTracker::stopSimulation()
+{
+    if (!m_simulating)
+        return;
+    m_simTimer.stop();
+    m_simulating = false;
+    m_tracking = false;
+    m_hasPosition = false;
+    m_hasDirection = false;
+    setStatus(tr("Location is off."));
+    emit simulationChanged();
+    emit trackingChanged();
+    emit positionChanged();
+}
+
+void LocationTracker::advanceSimulation()
+{
+    const double metres = m_simSpeed * 0.514444;
+    const double heading = qDegreesToRadians(m_simHeading);
+    m_latitude = qBound(-85.0, m_latitude + metres * std::cos(heading) / 111320.0, 85.0);
+    m_longitude += metres * std::sin(heading) / (111320.0 * std::cos(qDegreesToRadians(m_latitude)));
+    if (m_longitude > 180.0)
+        m_longitude -= 360.0;
+    else if (m_longitude < -180.0)
+        m_longitude += 360.0;
+    m_direction = m_simHeading;
+    emit positionChanged();
+    // Record a track point every 5 s, like a denser GPS feed.
+    if (++m_simTicks % 5 == 0)
+        emit locationReceived(m_latitude, m_longitude, m_accuracy,
+                              QDateTime::currentMSecsSinceEpoch());
+}
+
 void LocationTracker::handlePositionUpdate(const QGeoPositionInfo &info)
 {
+    if (m_simulating)
+        return;
     const QGeoCoordinate coordinate = info.coordinate();
     if (!coordinate.isValid())
         return;

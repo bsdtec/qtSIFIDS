@@ -70,6 +70,8 @@ public:
     Q_INVOKABLE void uploadPending(const QString &vesselPln);
     Q_INVOKABLE void uploadFormCsv(int formId, const QString &vesselPln);
     Q_INVOKABLE bool importAndroidDatabase(const QString &filePath);
+    Q_INVOKABLE QString exportDatabase(const QString &destination);
+    Q_INVOKABLE bool importDatabase(const QString &source);
 
 signals:
     void dataChanged();
@@ -90,6 +92,7 @@ private:
 
     QSqlDatabase *m_database = nullptr;
     QNetworkAccessManager *m_network = nullptr;
+    QString m_databasePath;
     QString m_status;
     bool m_statusNeedsAttention = false;
     bool m_uploading = false;
