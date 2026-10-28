@@ -11,6 +11,7 @@ find_package(Qt6 6.11 REQUIRED COMPONENTS
     Core
     Gui
     Location
+    Multimedia
     Network
     Positioning
     Qml
@@ -52,7 +53,12 @@ qt_add_qml_module(qtSIFIDS
         Main.qml
         qml/DateTimePickerDialog.qml
         qml/PlaceSelector.qml
+    RESOURCES
+        sounds/claxon.wav
+        sounds/gps-warning.wav
     SOURCES
+    src/AlarmAudio.cpp
+    src/AlarmAudio.h
     src/AppStore.cpp
     src/AppStore.h
     src/LocationTracker.cpp
@@ -108,6 +114,7 @@ target_link_libraries(qtSIFIDS PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Location
+    Qt6::Multimedia
     Qt6::Network
     Qt6::Positioning
     Qt6::Qml
@@ -116,6 +123,10 @@ target_link_libraries(qtSIFIDS PRIVATE
     Qt6::QuickDialogs2
     Qt6::Sql
 )
+
+if(TARGET Qt6::QFFmpegMediaPlugin)
+    qt_import_plugins(qtSIFIDS INCLUDE Qt6::QFFmpegMediaPlugin)
+endif()
 
 option(SIFIDS_VESSEL_SIMULATOR "Enable the debug vessel simulator" ON)
 if(SIFIDS_VESSEL_SIMULATOR AND NOT CMAKE_BUILD_TYPE MATCHES "^(Release|MinSizeRel)$")

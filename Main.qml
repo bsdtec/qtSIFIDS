@@ -4,6 +4,7 @@ import QtQuick.Controls.Material
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Shapes
+import QtMultimedia
 import QtLocation
 import QtPositioning
 import Sifids
@@ -71,7 +72,59 @@ ApplicationWindow {
     property bool addMenuOpen: false
     readonly property bool dialogOpen: sailPlanDialog.visible || simulatorDialog.visible
         || rowDialog.visible || observationDialog.visible
-        || statusDialog.visible || mapNoticeDialog.visible || potDialog.visible
+        || statusDialog.visible || mapNoticeDialog.visible || potDialog.visible || anchorDialog.visible
+
+    // Anchor watch: a pin with a radius; alarms when the boat leaves it or GPS goes stale.
+    property bool anchorActive: false
+    property real anchorLatitude: 0
+    property real anchorLongitude: 0
+    property real anchorRadius: 30
+    property string anchorAlarm: ""
+    property double anchorSnoozeUntil: 0
+    property double lastFixMs: 0
+    readonly property real anchorDistance: anchorActive && locationTracker.hasPosition
+        ? QtPositioning.coordinate(anchorLatitude, anchorLongitude)
+              .distanceTo(QtPositioning.coordinate(locationTracker.latitude, locationTracker.longitude))
+        : -1
+
+    function saveAnchor() {
+        appStore.saveSettings({
+            anchor_active: anchorActive,
+            anchor_latitude: anchorLatitude,
+            anchor_longitude: anchorLongitude,
+            anchor_radius: anchorRadius
+        })
+    }
+
+    function startAnchorWatch() {
+        if (!locationTracker.hasPosition) {
+            showNotice(qsTr("Waiting for a location fix before an anchor watch can be set."))
+            return
+        }
+        if (!anchorActive) {
+            anchorLatitude = locationTracker.latitude
+            anchorLongitude = locationTracker.longitude
+            anchorActive = true
+            lastFixMs = Date.now()
+            saveAnchor()
+        }
+        addMenuOpen = false
+        anchorDialog.open()
+    }
+
+    function stopAnchorWatch() {
+        anchorActive = false
+        anchorAlarm = ""
+        anchorSnoozeUntil = 0
+        saveAnchor()
+    }
+
+    function checkAnchor() {
+        const gpsTimeout = Math.max(3 * locationTracker.pollSeconds, 60) * 1000
+        const stale = !locationTracker.tracking || !locationTracker.hasPosition
+            || Date.now() - lastFixMs > gpsTimeout
+        anchorAlarm = stale ? "gps" : (anchorDistance > anchorRadius ? "drift" : "")
+    }
 
     function showNotice(message) {
         mapNoticeLabel.text = message
@@ -153,6 +206,61 @@ ApplicationWindow {
         function onTrackingChanged() {
             if (!locationTracker.tracking)
                 window.fishing = false
+        }
+        function onPositionChanged() {
+            if (locationTracker.hasPosition)
+                window.lastFixMs = Date.now()
+        }
+    }
+
+    AlarmAudio {
+        id: alarmAudio
+    }
+
+    SoundEffect {
+        id: claxonSound
+        source: "sounds/claxon.wav"
+        loops: SoundEffect.Infinite
+        volume: 1.0
+    }
+
+    SoundEffect {
+        id: gpsWarningSound
+        source: "sounds/gps-warning.wav"
+        loops: SoundEffect.Infinite
+        volume: 1.0
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: window.anchorActive
+        triggeredOnStart: true
+        onTriggered: {
+            window.checkAnchor()
+            const audible = Date.now() >= window.anchorSnoozeUntil
+            const wantClaxon = audible && window.anchorAlarm === "drift"
+            const wantGps = audible && window.anchorAlarm === "gps"
+            if ((wantClaxon || wantGps) && !claxonSound.playing && !gpsWarningSound.playing)
+                alarmAudio.boost()
+            else if (!wantClaxon && !wantGps)
+                alarmAudio.restore()
+            if (wantClaxon && !claxonSound.playing)
+                claxonSound.play()
+            else if (!wantClaxon && claxonSound.playing)
+                claxonSound.stop()
+            if (wantGps && !gpsWarningSound.playing)
+                gpsWarningSound.play()
+            else if (!wantGps && gpsWarningSound.playing)
+                gpsWarningSound.stop()
+        }
+    }
+
+    onAnchorActiveChanged: {
+        if (!anchorActive) {
+            claxonSound.stop()
+            gpsWarningSound.stop()
+            alarmAudio.restore()
         }
     }
 
@@ -384,6 +492,27 @@ ApplicationWindow {
                         color: "#d8493e"
                         border.color: "white"
                         border.width: 2
+                    }
+                }
+
+                MapCircle {
+                    visible: window.anchorActive
+                    center: QtPositioning.coordinate(window.anchorLatitude, window.anchorLongitude)
+                    radius: window.anchorRadius
+                    color: window.anchorAlarm === "drift" ? "#55d32f2f" : "#331565c0"
+                    border.color: window.anchorAlarm === "drift" ? "#d32f2f" : "#1565c0"
+                    border.width: 3
+                }
+
+                MapQuickItem {
+                    visible: window.anchorActive
+                    coordinate: QtPositioning.coordinate(window.anchorLatitude, window.anchorLongitude)
+                    anchorPoint.x: 14
+                    anchorPoint.y: 40
+                    sourceItem: MapPin {
+                        pinColor: window.anchorAlarm === "" ? "#1565c0" : "#d32f2f"
+                        letter: "⚓"
+                        onTapped: anchorDialog.open()
                     }
                 }
 
@@ -650,6 +779,29 @@ ApplicationWindow {
                         }
                     }
                 }
+
+                MapButton {
+                    id: addAnchorButton
+                    active: true
+                    activeColor: "#1565c0"
+                    onClicked: window.startAnchorWatch()
+
+                    // Anchor: ring, shank, stock and flukes.
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 26; height: 26
+                        preferredRendererType: Shape.CurveRenderer
+                        ShapePath {
+                            strokeColor: addAnchorButton.glyphColor
+                            strokeWidth: 2
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            joinStyle: ShapePath.RoundJoin
+                            PathSvg { path: "M 13 6 L 13 23 M 8 11 L 18 11 M 4 16 Q 5 23 13 23 Q 21 23 22 16 M 4 16 L 2 19 M 22 16 L 24 19" }
+                            PathSvg { path: "M 13 3 a 2.5 2.5 0 1 0 0.01 0 Z" }
+                        }
+                    }
+                }
             }
 
             Column {
@@ -830,6 +982,45 @@ ApplicationWindow {
                                                     : "---")
                         font.pixelSize: 18
                         font.bold: true
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.margins: 10
+                visible: window.anchorAlarm !== ""
+                width: Math.min(parent.width - 20, 360)
+                height: alarmRow.implicitHeight + 16
+                radius: 8
+                color: "#d32f2f"
+                z: 10
+
+                RowLayout {
+                    id: alarmRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 10
+                    Label {
+                        Layout.fillWidth: true
+                        text: window.anchorAlarm === "drift"
+                              ? qsTr("ANCHOR ALARM: %1 m from anchor (limit %2 m)")
+                                    .arg(Math.round(window.anchorDistance)).arg(window.anchorRadius)
+                              : qsTr("ANCHOR WATCH: GPS signal lost")
+                        color: "white"
+                        font.bold: true
+                        wrapMode: Text.Wrap
+                    }
+                    Button {
+                        text: Date.now() < window.anchorSnoozeUntil ? qsTr("Silenced") : qsTr("Silence")
+                        enabled: Date.now() >= window.anchorSnoozeUntil
+                        onClicked: {
+                            window.anchorSnoozeUntil = Date.now() + 60000
+                            claxonSound.stop()
+                            gpsWarningSound.stop()
+                            alarmAudio.restore()
+                        }
                     }
                 }
             }
@@ -1306,6 +1497,13 @@ ApplicationWindow {
         uploadEnabled.checked = saved.upload_enabled === "true"
         uploadUrl.text = saved.upload_url || "https://arts.st-andrews.ac.uk/sifids/"
         locationTracker.tracking = true
+        if (saved.anchor_active === "true") {
+            anchorLatitude = Number(saved.anchor_latitude)
+            anchorLongitude = Number(saved.anchor_longitude)
+            anchorRadius = Number(saved.anchor_radius) || 30
+            lastFixMs = Date.now()
+            anchorActive = true
+        }
         sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
         gpsPollSeconds.value = Number(saved.gps_poll_seconds) || 30
         locationTracker.pollSeconds = gpsPollSeconds.value
@@ -1428,6 +1626,55 @@ ApplicationWindow {
                 }
             }
 
+        }
+    }
+
+    Dialog {
+        id: anchorDialog
+        modal: true
+        title: qsTr("Anchor watch")
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 24, 380)
+        standardButtons: Dialog.Close
+
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: qsTr("Anchor at %1, %2\nBoat is %3 m from the anchor.")
+                    .arg(window.anchorLatitude.toFixed(5))
+                    .arg(window.anchorLongitude.toFixed(5))
+                    .arg(window.anchorDistance >= 0 ? Math.round(window.anchorDistance) : "--")
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: qsTr("Radius (m)") }
+                SpinBox {
+                    Layout.fillWidth: true
+                    from: 5; to: 1000; stepSize: 5
+                    editable: true
+                    value: window.anchorRadius
+                    onValueModified: {
+                        window.anchorRadius = value
+                        window.saveAnchor()
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: window.mutedText
+                text: qsTr("A claxon sounds if the boat leaves the circle, and a warning sounds if the GPS signal is lost. Keep the app open and the screen awake while the watch is on.")
+            }
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Delete anchor pin (stop watch)")
+                onClicked: {
+                    window.stopAnchorWatch()
+                    anchorDialog.close()
+                }
+            }
         }
     }
 
