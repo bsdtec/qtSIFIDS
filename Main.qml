@@ -241,11 +241,30 @@ ApplicationWindow {
                     coordinate: QtPositioning.coordinate(sailPlan.departureLatitude, sailPlan.departureLongitude)
                     anchorPoint.x: departurePin.width / 2
                     anchorPoint.y: departurePin.height
-                    sourceItem: Label {
+                    sourceItem: Item {
                         id: departurePin
-                        text: "\u26f4"
-                        font.pixelSize: 26
-                        color: "#2e7d32"
+                        width: 28
+                        height: 40
+                        Rectangle {
+                            width: 14; height: 14
+                            x: 7; y: 24
+                            rotation: 45
+                            color: "#2e7d32"
+                        }
+                        Rectangle {
+                            width: 28; height: 28
+                            radius: 14
+                            color: "#2e7d32"
+                            border.color: "white"
+                            border.width: 2
+                            Text {
+                                anchors.centerIn: parent
+                                text: "D"
+                                color: "white"
+                                font.bold: true
+                                font.pixelSize: 14
+                            }
+                        }
                     }
                 }
 
@@ -254,11 +273,30 @@ ApplicationWindow {
                     coordinate: QtPositioning.coordinate(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
                     anchorPoint.x: destinationPin.width / 2
                     anchorPoint.y: destinationPin.height
-                    sourceItem: Label {
+                    sourceItem: Item {
                         id: destinationPin
-                        text: "\ud83c\udfc1"
-                        font.pixelSize: 26
-                        color: "#c62828"
+                        width: 28
+                        height: 40
+                        Rectangle {
+                            width: 14; height: 14
+                            x: 7; y: 24
+                            rotation: 45
+                            color: "#c62828"
+                        }
+                        Rectangle {
+                            width: 28; height: 28
+                            radius: 14
+                            color: "#c62828"
+                            border.color: "white"
+                            border.width: 2
+                            Text {
+                                anchors.centerIn: parent
+                                text: "A"
+                                color: "white"
+                                font.bold: true
+                                font.pixelSize: 14
+                            }
+                        }
                     }
                 }
 
@@ -703,7 +741,7 @@ ApplicationWindow {
         function onPositionChanged() {
             sailPlan.updatePosition(locationTracker.latitude, locationTracker.longitude,
                                     locationTracker.direction, locationTracker.hasDirection,
-                                    locationTracker.hasPosition)
+                                    locationTracker.hasPosition, locationTracker.accuracy)
         }
     }
 
@@ -849,116 +887,129 @@ ApplicationWindow {
                 sailPlan.setDepartureTime(new Date())
         }
 
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Label {
-                Layout.fillWidth: true
-                visible: !sailPlan.enabled
-                text: qsTr("Enable sail plan check-ins in Settings to use this feature.")
-                color: window.errorText
-                wrapMode: Text.Wrap
-            }
-
-            Label {
-                Layout.fillWidth: true
-                visible: sailPlan.active
-                text: sailPlan.summary
-                wrapMode: Text.Wrap
-            }
-
-            Button {
-                Layout.fillWidth: true
-                visible: sailPlan.active
-                text: qsTr("Cancel / clear sail plan")
-                onClicked: sailPlan.cancel()
-            }
-
+        contentItem: ScrollView {
+            id: sailPlanScroll
+            clip: true
+            contentWidth: availableWidth
             ColumnLayout {
-                Layout.fillWidth: true
-                visible: !sailPlan.active
-                spacing: 8
+                width: sailPlanScroll.availableWidth
+                spacing: 12
 
-                PlaceSelector {
+                Label {
                     Layout.fillWidth: true
-                    title: qsTr("Departure point")
-                    places: appStore.places
-                    pointName: sailPlan.departureName
-                    hasPoint: sailPlan.hasDeparturePoint
-                    pointText: sailPlanDialog.formatPoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
-                    canUseGps: locationTracker.hasPosition
-                    onPlaceChosen: (latitude, longitude, name) => sailPlan.setDeparturePoint(latitude, longitude, name)
-                    onDropPinRequested: {
-                        sailPlanDialog.close()
-                        map.pickingMode = "departure"
-                    }
-                    onUseGpsRequested: sailPlan.setDeparturePoint(locationTracker.latitude, locationTracker.longitude)
-                    onSaveRequested: placeNameDialog.openFor("departure")
-                    onDeleteRequested: (placeId) => {
-                        appStore.deletePlace(placeId)
-                        sailPlan.setDeparturePoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
-                    }
+                    visible: !sailPlan.enabled
+                    text: qsTr("Enable sail plan check-ins in Settings to use this feature.")
+                    color: window.errorText
+                    wrapMode: Text.Wrap
                 }
 
-                Label { text: qsTr("Departure time"); font.bold: true }
-                Button {
+                Label {
                     Layout.fillWidth: true
-                    text: sailPlanDialog.formatWhen(sailPlan.departureTime)
-                    onClicked: {
-                        departureTimePicker.value = isNaN(sailPlan.departureTime.getTime())
-                                                     ? new Date() : sailPlan.departureTime
-                        departureTimePicker.open()
-                    }
-                }
-
-                PlaceSelector {
-                    Layout.fillWidth: true
-                    title: qsTr("Destination point")
-                    places: appStore.places
-                    pointName: sailPlan.destinationName
-                    hasPoint: sailPlan.hasDestinationPoint
-                    pointText: sailPlanDialog.formatPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
-                    canUseGps: false
-                    onPlaceChosen: (latitude, longitude, name) => sailPlan.setDestinationPoint(latitude, longitude, name)
-                    onDropPinRequested: {
-                        sailPlanDialog.close()
-                        map.pickingMode = "destination"
-                    }
-                    onSaveRequested: placeNameDialog.openFor("destination")
-                    onDeleteRequested: (placeId) => {
-                        appStore.deletePlace(placeId)
-                        sailPlan.setDestinationPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
-                    }
-                }
-
-                Label { text: qsTr("Destination time (ETA)"); font.bold: true }
-                Button {
-                    Layout.fillWidth: true
-                    text: sailPlanDialog.formatWhen(sailPlan.destinationTime)
-                    onClicked: {
-                        destinationTimePicker.value = isNaN(sailPlan.destinationTime.getTime())
-                                                       ? new Date() : sailPlan.destinationTime
-                        destinationTimePicker.open()
-                    }
+                    visible: sailPlan.active
+                    text: sailPlan.summary
+                    wrapMode: Text.Wrap
                 }
 
                 Button {
                     Layout.fillWidth: true
-                    text: qsTr("Start sail plan and share")
-                    enabled: sailPlan.enabled
-                    onClicked: {
-                        if (sailPlan.start())
+                    visible: sailPlan.active
+                    text: qsTr("Cancel / clear sail plan")
+                    onClicked: sailPlan.cancel()
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    visible: sailPlan.active
+                    text: qsTr("Arrived — send arrival message")
+                    onClicked: sailPlan.arrive()
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: !sailPlan.active
+                    spacing: 8
+
+                    PlaceSelector {
+                        Layout.fillWidth: true
+                        title: qsTr("Departure point")
+                        places: appStore.places
+                        pointName: sailPlan.departureName
+                        hasPoint: sailPlan.hasDeparturePoint
+                        pointText: sailPlanDialog.formatPoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
+                        canUseGps: locationTracker.hasPosition
+                        onPlaceChosen: (latitude, longitude, name) => sailPlan.setDeparturePoint(latitude, longitude, name)
+                        onDropPinRequested: {
                             sailPlanDialog.close()
+                            map.pickingMode = "departure"
+                        }
+                        onUseGpsRequested: sailPlan.setDeparturePoint(locationTracker.latitude, locationTracker.longitude)
+                        onSaveRequested: placeNameDialog.openFor("departure")
+                        onDeleteRequested: (placeId) => {
+                            appStore.deletePlace(placeId)
+                            sailPlan.setDeparturePoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
+                        }
+                    }
+
+                    Label { text: qsTr("Departure time"); font.bold: true }
+                    Button {
+                        Layout.fillWidth: true
+                        text: sailPlanDialog.formatWhen(sailPlan.departureTime)
+                        onClicked: {
+                            departureTimePicker.value = isNaN(sailPlan.departureTime.getTime())
+                                                         ? new Date() : sailPlan.departureTime
+                            departureTimePicker.open()
+                        }
+                    }
+
+                    PlaceSelector {
+                        Layout.fillWidth: true
+                        title: qsTr("Destination point")
+                        places: appStore.places
+                        pointName: sailPlan.destinationName
+                        hasPoint: sailPlan.hasDestinationPoint
+                        pointText: sailPlanDialog.formatPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
+                        canUseGps: false
+                        onPlaceChosen: (latitude, longitude, name) => sailPlan.setDestinationPoint(latitude, longitude, name)
+                        onDropPinRequested: {
+                            sailPlanDialog.close()
+                            map.pickingMode = "destination"
+                        }
+                        onSaveRequested: placeNameDialog.openFor("destination")
+                        onDeleteRequested: (placeId) => {
+                            appStore.deletePlace(placeId)
+                            sailPlan.setDestinationPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
+                        }
+                    }
+
+                    Label { text: qsTr("Destination time (ETA)"); font.bold: true }
+                    Button {
+                        Layout.fillWidth: true
+                        text: sailPlanDialog.formatWhen(sailPlan.destinationTime)
+                        onClicked: {
+                            destinationTimePicker.value = isNaN(sailPlan.destinationTime.getTime())
+                                                           ? new Date() : sailPlan.destinationTime
+                            destinationTimePicker.open()
+                        }
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: qsTr("Start sail plan and share")
+                        enabled: sailPlan.enabled
+                        onClicked: {
+                            if (sailPlan.start())
+                                sailPlanDialog.close()
+                        }
                     }
                 }
-            }
 
-            Label {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                text: qsTr("Starting a plan, and each position update as you approach the ETA, opens your device's share sheet — pick your shore contact in whatever messaging app you use.")
-                color: window.mutedText
-                wrapMode: Text.Wrap
+                Label {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    text: qsTr("Starting a plan, and each position update as you approach the ETA, opens your device's share sheet — pick your shore contact in whatever messaging app you use.")
+                    color: window.mutedText
+                    wrapMode: Text.Wrap
+                }
             }
         }
     }
