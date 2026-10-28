@@ -10,6 +10,30 @@
 #include <algorithm>
 #include <cmath>
 
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qnativeinterface.h>
+#endif
+
+namespace {
+// Keeps the app alive in the background on Android via a foreground service.
+void setBackgroundService(bool active)
+{
+#ifdef Q_OS_ANDROID
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([active] {
+        QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        if (!activity.isValid())
+            return;
+        QJniObject::callStaticMethod<void>(
+            "com/bsdtec/qtSIFIDS/TrackingService", active ? "start" : "stop",
+            "(Landroid/app/Activity;)V", activity.object());
+    });
+#else
+    Q_UNUSED(active)
+#endif
+}
+}
+
 LocationTracker::LocationTracker(QObject *parent)
     : QObject(parent),
       m_source(QGeoPositionInfoSource::createDefaultSource(this))
@@ -32,6 +56,8 @@ LocationTracker::LocationTracker(QObject *parent)
 
 LocationTracker::~LocationTracker()
 {
+    if (m_tracking)
+        setBackgroundService(false);
     if (m_source)
         m_source->stopUpdates();
 }
@@ -75,6 +101,7 @@ void LocationTracker::setTracking(bool tracking)
     }
 
     m_tracking = tracking;
+    setBackgroundService(m_tracking);
     if (m_tracking) {
         m_source->startUpdates();
         setStatus(tr("Waiting for a location fix…"));

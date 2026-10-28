@@ -117,9 +117,9 @@ additively, so importing the same file more than once creates duplicates.
 ## Platform work still required
 
 Qt's positioning API provides a shared interface, but OS permissions and
-background execution are platform-specific. Android foreground-service
-tracking and notifications (tracking currently runs only while the app is in
-the foreground), iOS background location and permissions, and release
+background execution are platform-specific. Android background tracking uses a
+foreground service (`TrackingService`) with an ongoing notification while
+tracking is on; it has not been tested on a device yet. iOS background location and permissions, and release
 signing for Android and iOS are not implemented yet. Linux location
 support depends on a provider being installed and available.
 
