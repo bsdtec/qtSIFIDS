@@ -97,6 +97,16 @@ double LocationTracker::accuracy() const
     return m_accuracy;
 }
 
+bool LocationTracker::hasDirection() const
+{
+    return m_hasDirection;
+}
+
+double LocationTracker::direction() const
+{
+    return m_direction;
+}
+
 QString LocationTracker::status() const
 {
     return m_status;
@@ -123,6 +133,8 @@ void LocationTracker::handlePositionUpdate(const QGeoPositionInfo &info)
     m_accuracy = info.hasAttribute(QGeoPositionInfo::HorizontalAccuracy)
         ? info.attribute(QGeoPositionInfo::HorizontalAccuracy)
         : 0.0;
+    m_hasDirection = info.hasAttribute(QGeoPositionInfo::Direction);
+    m_direction = m_hasDirection ? info.attribute(QGeoPositionInfo::Direction) : 0.0;
 
     setStatus(m_accuracy > 0.0
                   ? tr("Position updated (±%1 m).").arg(m_accuracy, 0, 'f', 0)

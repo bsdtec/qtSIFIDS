@@ -74,7 +74,14 @@ arm64-v8a only; a release build needs your own signing keystore.
   Room database version 15. Select a database copy from Settings; Android app
   preferences are not imported.
 - A consent confirmation gate for location recording.
-- Tests for database persistence, CRUD, CSV export, and Android database import.
+- A sail plan (float plan) safety feature, enabled from Settings: record a
+  departure point/time and a destination point/time (ETA), share the plan via
+  the device's native share sheet (Android's chooser / iOS's
+  UIActivityViewController) to any contact in any installed app, then get
+  prompted to share your live position, heading, and a map pin at 15, 10 and 5
+  minutes before, and at, the ETA so a shore contact knows if you're overdue.
+- Tests for database persistence, CRUD, CSV export, Android database import,
+  and sail plan check-in scheduling.
 
 The importer supports only version 15 and should be tested against real
 anonymized database copies before migration is relied on. It imports
@@ -88,6 +95,12 @@ tracking and notifications (tracking currently runs only while the app is in
 the foreground), iOS background location and permissions, and release
 signing for Android and iOS are not implemented yet. Linux location
 support depends on a provider being installed and available.
+
+The sail plan check-ins only fire while the app is in the foreground, for the
+same reason tracking does. The Android share sheet (`src/ShareService.cpp`)
+has been built and run; the iOS share sheet (`src/ShareService_ios.mm`) has
+only been reviewed, since there is no Xcode/iOS toolchain available to build
+or test it here — verify it on a Mac before relying on it.
 
 Also not yet ported: the full participant information and consent form, all
 original lookup catalog entries and preference categories, scheduled

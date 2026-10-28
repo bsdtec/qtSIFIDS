@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Shapes
@@ -19,6 +20,16 @@ ApplicationWindow {
     title: qsTr("SIFIDS")
     color: bgColor
 
+    // The window background is custom, so tell the controls style which theme to use for text and fields.
+    Material.theme: dark ? Material.Dark : Material.Light
+    Material.background: bgColor
+    palette.window: bgColor
+    palette.windowText: dark ? "#e6ebe8" : "#1e2321"
+    palette.text: palette.windowText
+    palette.buttonText: palette.windowText
+    palette.base: dark ? "#2b312e" : "white"
+    palette.placeholderText: mutedText
+
     readonly property bool dark: Application.styleHints.colorScheme === Qt.ColorScheme.Dark
     readonly property color bgColor: dark ? "#1e2321" : "#f4f6f5"
     readonly property color cardColor: dark ? "#2b312e" : "white"
@@ -35,6 +46,17 @@ ApplicationWindow {
 
     LocationTracker {
         id: locationTracker
+    }
+
+    SailPlan {
+        id: sailPlan
+        onErrorOccurred: (message) => sailPlanErrorDialog.showError(message)
+        onShareRequested: (subject, body) => shareService.shareText(subject, body)
+    }
+
+    ShareService {
+        id: shareService
+        onShareUnavailable: (body) => shareCopiedDialog.open()
     }
 
     Plugin {
@@ -110,6 +132,7 @@ ApplicationWindow {
                 property geoCoordinate startCentroid
                 property bool autoZoomed: false
                 property bool following: true
+                property string pickingMode: ""
 
                 Component.onCompleted: {
                     for (let i = 0; i < supportedMapTypes.length; ++i) {
@@ -173,6 +196,21 @@ ApplicationWindow {
                     onDoubleTapped: (point) => map.zoomAt(point.position, -1)
                 }
 
+                TapHandler {
+                    id: pointPicker
+                    enabled: map.pickingMode !== ""
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchScreen
+                    onTapped: (point) => {
+                        const coordinate = map.toCoordinate(point.position, false)
+                        if (map.pickingMode === "departure")
+                            sailPlan.setDeparturePoint(coordinate.latitude, coordinate.longitude)
+                        else if (map.pickingMode === "destination")
+                            sailPlan.setDestinationPoint(coordinate.latitude, coordinate.longitude)
+                        map.pickingMode = ""
+                        sailPlanDialog.open()
+                    }
+                }
+
                 function zoomAt(pos, step) {
                     const anchor = map.toCoordinate(pos, false)
                     following = false
@@ -195,6 +233,32 @@ ApplicationWindow {
                         color: "#d8493e"
                         border.color: "white"
                         border.width: 2
+                    }
+                }
+
+                MapQuickItem {
+                    visible: sailPlan.hasDeparturePoint
+                    coordinate: QtPositioning.coordinate(sailPlan.departureLatitude, sailPlan.departureLongitude)
+                    anchorPoint.x: departurePin.width / 2
+                    anchorPoint.y: departurePin.height
+                    sourceItem: Label {
+                        id: departurePin
+                        text: "\u26f4"
+                        font.pixelSize: 26
+                        color: "#2e7d32"
+                    }
+                }
+
+                MapQuickItem {
+                    visible: sailPlan.hasDestinationPoint
+                    coordinate: QtPositioning.coordinate(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
+                    anchorPoint.x: destinationPin.width / 2
+                    anchorPoint.y: destinationPin.height
+                    sourceItem: Label {
+                        id: destinationPin
+                        text: "\ud83c\udfc1"
+                        font.pixelSize: 26
+                        color: "#c62828"
                     }
                 }
 
@@ -258,12 +322,22 @@ ApplicationWindow {
                 }
             }
 
-            Button {
+            Column {
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.margins: 10
-                text: locationTracker.tracking ? qsTr("Tracking ●") : qsTr("Tracking")
-                onClicked: trackingDialog.open()
+                spacing: 6
+
+                Button {
+                    text: locationTracker.tracking ? qsTr("Tracking ●") : qsTr("Tracking")
+                    onClicked: trackingDialog.open()
+                }
+
+                Button {
+                    visible: sailPlan.enabled
+                    text: sailPlan.active ? qsTr("Sail plan ●") : qsTr("Sail plan")
+                    onClicked: sailPlanDialog.open()
+                }
             }
 
             Button {
@@ -276,6 +350,37 @@ ApplicationWindow {
                     map.following = true
                     map.center = QtPositioning.coordinate(locationTracker.latitude,
                                                           locationTracker.longitude)
+                }
+            }
+
+            Rectangle {
+                anchors.top: parent.top
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.margins: 10
+                visible: map.pickingMode !== ""
+                width: pickingRow.implicitWidth + 24
+                height: pickingRow.implicitHeight + 16
+                radius: 8
+                color: window.cardColor
+                border.color: window.cardBorder
+
+                RowLayout {
+                    id: pickingRow
+                    anchors.centerIn: parent
+                    spacing: 12
+
+                    Label {
+                        text: map.pickingMode === "departure"
+                              ? qsTr("Tap the map to set the departure point")
+                              : qsTr("Tap the map to set the destination point")
+                    }
+                    Button {
+                        text: qsTr("Cancel")
+                        onClicked: {
+                            map.pickingMode = ""
+                            sailPlanDialog.open()
+                        }
+                    }
                 }
             }
         }
@@ -474,7 +579,7 @@ ApplicationWindow {
 
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("Consent and privacy: location recording and uploads must only be enabled after the participant has reviewed the project information and consented. Consent capture and withdrawal workflows still need to be ported.")
+                        text: qsTr("Consent and privacy: data is always stored on this device. Uploading it to a server only happens after the participant has consented and ticked the upload option.")
                         wrapMode: Text.Wrap
                         color: window.mutedText
                     }
@@ -492,7 +597,10 @@ ApplicationWindow {
                             consent_name: consentName.text,
                             consent_email: consentEmail.text,
                             consent_phone: consentPhone.text,
-                            consent_confirmed: consentConfirmed.checked
+                            consent_confirmed: consentConfirmed.checked,
+                            upload_enabled: uploadEnabled.checked,
+                            upload_url: uploadUrl.text.trim(),
+                            sail_plan_enabled: sailPlanEnabled.checked
                         })
                     }
 
@@ -529,7 +637,52 @@ ApplicationWindow {
                             CheckBox {
                                 id: consentConfirmed
                                 Layout.fillWidth: true
-                                text: qsTr("I have read the information and consent to take part, including location recording when I enable tracking.")
+                                text: qsTr("I have read the information and consent to take part, including sending my data off this device.")
+                            }
+                            CheckBox {
+                                id: uploadEnabled
+                                Layout.fillWidth: true
+                                text: qsTr("Upload my data to the server below")
+                            }
+                            TextField {
+                                id: uploadUrl
+                                Layout.fillWidth: true
+                                inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhUrlCharactersOnly
+                                placeholderText: qsTr("Upload URL")
+                            }
+                            Button {
+                                text: qsTr("Reset URL to St Andrews default")
+                                onClicked: uploadUrl.text = "https://arts.st-andrews.ac.uk/sifids/"
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: sailPlanColumn.implicitHeight + 24
+                        color: window.cardColor
+                        radius: 8
+                        border.color: window.cardBorder
+
+                        ColumnLayout {
+                            id: sailPlanColumn
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 10
+
+                            Label {
+                                text: qsTr("Sail plan safety check-ins")
+                                font.bold: true
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("When enabled, the Sail plan button on the Map tab lets you share a departure/destination plan with a contact of your choice, then automatically prompts you to share your current position at 15, 10 and 5 minutes before, and at, your ETA — so a shore contact knows if you're overdue.")
+                                wrapMode: Text.Wrap
+                            }
+                            CheckBox {
+                                id: sailPlanEnabled
+                                Layout.fillWidth: true
+                                text: qsTr("Enable sail plan check-ins")
                             }
                         }
                     }
@@ -547,22 +700,24 @@ ApplicationWindow {
         function onLocationReceived(latitude, longitude, accuracy, timestamp) {
             appStore.recordLocation(latitude, longitude, accuracy, timestamp, fishingToggle.checked)
         }
+        function onPositionChanged() {
+            sailPlan.updatePosition(locationTracker.latitude, locationTracker.longitude,
+                                    locationTracker.direction, locationTracker.hasDirection,
+                                    locationTracker.hasPosition)
+        }
     }
 
     Connections {
         target: appStore
         function onDataChanged() {
-            if (!appStore.consented) {
-                locationTracker.tracking = false
-                fishingToggle.checked = false
-            }
+            sailPlan.enabled = appStore.settings().sail_plan_enabled === "true"
         }
     }
 
     Timer {
         interval: 30 * 60 * 1000
         repeat: true
-        running: appStore.consented
+        running: appStore.consented && appStore.uploadEnabled
         onTriggered: appStore.uploadPending(appStore.settings().pln || "")
     }
 
@@ -579,6 +734,11 @@ ApplicationWindow {
         consentEmail.text = saved.consent_email || ""
         consentPhone.text = saved.consent_phone || ""
         consentConfirmed.checked = saved.consent_confirmed === "true"
+        uploadEnabled.checked = saved.upload_enabled === "true"
+        uploadUrl.text = saved.upload_url || "https://arts.st-andrews.ac.uk/sifids/"
+        locationTracker.tracking = true
+        sailPlanEnabled.checked = saved.sail_plan_enabled === "true"
+        sailPlan.enabled = sailPlanEnabled.checked
     }
 
     Dialog {
@@ -608,14 +768,13 @@ ApplicationWindow {
                     text: locationTracker.tracking
                           ? qsTr("Stop tracking")
                           : qsTr("Start tracking")
-                    enabled: appStore.consented || locationTracker.tracking
                     onClicked: locationTracker.tracking = !locationTracker.tracking
                 }
 
                 Switch {
                     id: fishingToggle
                     text: qsTr("Currently fishing")
-                    enabled: locationTracker.tracking && appStore.consented
+                    enabled: locationTracker.tracking
                 }
 
                 ComboBox {
@@ -638,7 +797,7 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     visible: !appStore.consented
-                    text: qsTr("Complete the consent details in Settings before recording location.")
+                    text: qsTr("Location is saved on this device only. Complete the consent details in Settings to enable uploads.")
                     color: window.errorText
                     wrapMode: Text.Wrap
                 }
@@ -662,6 +821,231 @@ ApplicationWindow {
                 }
             }
 
+        }
+    }
+
+    Dialog {
+        id: sailPlanDialog
+        modal: true
+        title: qsTr("Sail plan")
+        standardButtons: Dialog.Close
+        anchors.centerIn: parent
+        topMargin: 12
+        bottomMargin: 12
+        height: Math.min(implicitHeight, window.dialogMaxHeight)
+        width: Math.min(parent.width - 24, 460)
+
+        function formatPoint(latitude, longitude) {
+            return latitude.toFixed(5) + ", " + longitude.toFixed(5)
+        }
+        function formatWhen(date) {
+            return isNaN(date.getTime()) ? qsTr("Tap to set…") : Qt.formatDateTime(date, "d MMM yyyy, HH:mm")
+        }
+
+        Component.onCompleted: {
+            // "Time... default to now" for departure only; destination/ETA is left
+            // for the user to pick.
+            if (isNaN(sailPlan.departureTime.getTime()))
+                sailPlan.setDepartureTime(new Date())
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Label {
+                Layout.fillWidth: true
+                visible: !sailPlan.enabled
+                text: qsTr("Enable sail plan check-ins in Settings to use this feature.")
+                color: window.errorText
+                wrapMode: Text.Wrap
+            }
+
+            Label {
+                Layout.fillWidth: true
+                visible: sailPlan.active
+                text: sailPlan.summary
+                wrapMode: Text.Wrap
+            }
+
+            Button {
+                Layout.fillWidth: true
+                visible: sailPlan.active
+                text: qsTr("Cancel / clear sail plan")
+                onClicked: sailPlan.cancel()
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: !sailPlan.active
+                spacing: 8
+
+                PlaceSelector {
+                    Layout.fillWidth: true
+                    title: qsTr("Departure point")
+                    places: appStore.places
+                    pointName: sailPlan.departureName
+                    hasPoint: sailPlan.hasDeparturePoint
+                    pointText: sailPlanDialog.formatPoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
+                    canUseGps: locationTracker.hasPosition
+                    onPlaceChosen: (latitude, longitude, name) => sailPlan.setDeparturePoint(latitude, longitude, name)
+                    onDropPinRequested: {
+                        sailPlanDialog.close()
+                        map.pickingMode = "departure"
+                    }
+                    onUseGpsRequested: sailPlan.setDeparturePoint(locationTracker.latitude, locationTracker.longitude)
+                    onSaveRequested: placeNameDialog.openFor("departure")
+                    onDeleteRequested: (placeId) => {
+                        appStore.deletePlace(placeId)
+                        sailPlan.setDeparturePoint(sailPlan.departureLatitude, sailPlan.departureLongitude)
+                    }
+                }
+
+                Label { text: qsTr("Departure time"); font.bold: true }
+                Button {
+                    Layout.fillWidth: true
+                    text: sailPlanDialog.formatWhen(sailPlan.departureTime)
+                    onClicked: {
+                        departureTimePicker.value = isNaN(sailPlan.departureTime.getTime())
+                                                     ? new Date() : sailPlan.departureTime
+                        departureTimePicker.open()
+                    }
+                }
+
+                PlaceSelector {
+                    Layout.fillWidth: true
+                    title: qsTr("Destination point")
+                    places: appStore.places
+                    pointName: sailPlan.destinationName
+                    hasPoint: sailPlan.hasDestinationPoint
+                    pointText: sailPlanDialog.formatPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
+                    canUseGps: false
+                    onPlaceChosen: (latitude, longitude, name) => sailPlan.setDestinationPoint(latitude, longitude, name)
+                    onDropPinRequested: {
+                        sailPlanDialog.close()
+                        map.pickingMode = "destination"
+                    }
+                    onSaveRequested: placeNameDialog.openFor("destination")
+                    onDeleteRequested: (placeId) => {
+                        appStore.deletePlace(placeId)
+                        sailPlan.setDestinationPoint(sailPlan.destinationLatitude, sailPlan.destinationLongitude)
+                    }
+                }
+
+                Label { text: qsTr("Destination time (ETA)"); font.bold: true }
+                Button {
+                    Layout.fillWidth: true
+                    text: sailPlanDialog.formatWhen(sailPlan.destinationTime)
+                    onClicked: {
+                        destinationTimePicker.value = isNaN(sailPlan.destinationTime.getTime())
+                                                       ? new Date() : sailPlan.destinationTime
+                        destinationTimePicker.open()
+                    }
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: qsTr("Start sail plan and share")
+                    enabled: sailPlan.enabled
+                    onClicked: {
+                        if (sailPlan.start())
+                            sailPlanDialog.close()
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                text: qsTr("Starting a plan, and each position update as you approach the ETA, opens your device's share sheet — pick your shore contact in whatever messaging app you use.")
+                color: window.mutedText
+                wrapMode: Text.Wrap
+            }
+        }
+    }
+
+    Dialog {
+        id: placeNameDialog
+        modal: true
+        title: qsTr("Save place")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 24, 380)
+
+        property string kind: "departure"
+
+        function openFor(which) {
+            kind = which
+            placeNameField.text = ""
+            open()
+            placeNameField.forceActiveFocus()
+        }
+
+        onAccepted: {
+            const departure = kind === "departure"
+            const latitude = departure ? sailPlan.departureLatitude : sailPlan.destinationLatitude
+            const longitude = departure ? sailPlan.departureLongitude : sailPlan.destinationLongitude
+            const name = placeNameField.text.trim()
+            if (name === "" || appStore.savePlace(name, latitude, longitude) < 0)
+                return
+            if (departure)
+                sailPlan.setDeparturePoint(latitude, longitude, name)
+            else
+                sailPlan.setDestinationPoint(latitude, longitude, name)
+        }
+
+        contentItem: TextField {
+            id: placeNameField
+            placeholderText: qsTr("Place name")
+            inputMethodHints: Qt.ImhNoPredictiveText
+        }
+    }
+
+    DateTimePickerDialog {
+        id: departureTimePicker
+        label: qsTr("Departure time")
+        onAccepted: sailPlan.setDepartureTime(pickedValue)
+    }
+
+    DateTimePickerDialog {
+        id: destinationTimePicker
+        label: qsTr("Destination time (ETA)")
+        onAccepted: sailPlan.setDestinationTime(pickedValue)
+    }
+
+    Dialog {
+        id: sailPlanErrorDialog
+        property alias text: sailPlanErrorLabel.text
+        function showError(message) {
+            text = message
+            open()
+        }
+        modal: true
+        title: qsTr("Sail plan")
+        standardButtons: Dialog.Ok
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 400)
+        contentItem: ColumnLayout {
+            Label {
+                id: sailPlanErrorLabel
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+            }
+        }
+    }
+
+    Dialog {
+        id: shareCopiedDialog
+        modal: true
+        title: qsTr("Message copied")
+        standardButtons: Dialog.Ok
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 400)
+        contentItem: ColumnLayout {
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("This device has no share sheet, so the message was copied to the clipboard. Paste it into your messaging app to send it.")
+                wrapMode: Text.Wrap
+            }
         }
     }
 

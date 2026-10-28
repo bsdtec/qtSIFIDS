@@ -16,6 +16,7 @@ class AppStore : public QObject
     Q_PROPERTY(QVariantList forms READ forms NOTIFY dataChanged)
     Q_PROPERTY(QVariantList observations READ observations NOTIFY dataChanged)
     Q_PROPERTY(QVariantList locations READ locations NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList places READ places NOTIFY placesChanged)
     Q_PROPERTY(QVariantList ports READ ports CONSTANT)
     Q_PROPERTY(QVariantList gears READ gears CONSTANT)
     Q_PROPERTY(QVariantList species READ species CONSTANT)
@@ -24,6 +25,8 @@ class AppStore : public QObject
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(bool uploading READ uploading NOTIFY uploadingChanged)
     Q_PROPERTY(bool consented READ consented NOTIFY dataChanged)
+    Q_PROPERTY(bool uploadEnabled READ uploadEnabled NOTIFY dataChanged)
+    Q_PROPERTY(QString uploadUrl READ uploadUrl NOTIFY dataChanged)
 
 public:
     explicit AppStore(QObject *parent = nullptr);
@@ -32,6 +35,7 @@ public:
     QVariantList forms() const;
     QVariantList observations() const;
     QVariantList locations() const;
+    QVariantList places() const;
     QVariantList ports() const;
     QVariantList gears() const;
     QVariantList species() const;
@@ -40,9 +44,14 @@ public:
     QString status() const;
     bool uploading() const;
     bool consented() const;
+    bool uploadEnabled() const;
+    QString uploadUrl() const;
+    static QString defaultUploadUrl();
 
     Q_INVOKABLE QVariantList rowsForForm(int formId) const;
     Q_INVOKABLE QVariantMap settings() const;
+    Q_INVOKABLE int savePlace(const QString &name, double latitude, double longitude);
+    Q_INVOKABLE bool deletePlace(int placeId);
     Q_INVOKABLE bool saveSettings(const QVariantMap &values);
     Q_INVOKABLE int saveForm(const QVariantMap &form);
     Q_INVOKABLE bool deleteForm(int formId);
@@ -60,6 +69,7 @@ public:
 
 signals:
     void dataChanged();
+    void placesChanged();
     void statusChanged();
     void uploadingChanged();
 
@@ -67,6 +77,7 @@ private:
     bool initialize();
     bool execute(const QString &sql) const;
     void finishUploads();
+    bool uploadAllowed();
     void setStatus(const QString &status);
     QString writeExportFile(const QString &destination, const QString &defaultName,
                             const QString &contents);

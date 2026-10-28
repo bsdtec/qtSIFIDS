@@ -50,12 +50,25 @@ qt_add_qml_module(qtSIFIDS
     VERSION 1.0
     QML_FILES
         Main.qml
+        qml/DateTimePickerDialog.qml
+        qml/PlaceSelector.qml
     SOURCES
     src/AppStore.cpp
     src/AppStore.h
     src/LocationTracker.cpp
     src/LocationTracker.h
+    src/SailPlan.cpp
+    src/SailPlan.h
+    src/ShareService.cpp
+    src/ShareService.h
 )
+
+if(IOS)
+    # ShareService.cpp delegates to this Objective-C++ UIActivityViewController
+    # presenter on iOS; see ShareService_ios.mm for details.
+    target_sources(qtSIFIDS PRIVATE src/ShareService_ios.mm)
+    target_link_libraries(qtSIFIDS PRIVATE "-framework UIKit")
+endif()
 
 qt_add_resources(qtSIFIDS app_icon
     PREFIX /
@@ -129,4 +142,17 @@ if(BUILD_TESTING)
         Qt6::Test
     )
     add_test(NAME qtSIFIDS_tests COMMAND qtSIFIDS_tests)
+
+    qt_add_executable(qtSIFIDS_sailplan_tests
+        tests/SailPlanTests.cpp
+        src/SailPlan.cpp
+        src/SailPlan.h
+    )
+    target_include_directories(qtSIFIDS_sailplan_tests PRIVATE src)
+    target_link_libraries(qtSIFIDS_sailplan_tests PRIVATE
+        Qt6::Core
+        Qt6::Qml
+        Qt6::Test
+    )
+    add_test(NAME qtSIFIDS_sailplan_tests COMMAND qtSIFIDS_sailplan_tests)
 endif()

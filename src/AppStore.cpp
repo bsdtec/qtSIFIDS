@@ -127,6 +127,9 @@ bool AppStore::initialize()
                        "id INTEGER PRIMARY KEY AUTOINCREMENT, animal TEXT NOT NULL, species TEXT, "
                        "timestamp INTEGER NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, "
                        "count INTEGER NOT NULL DEFAULT 1, notes TEXT, submitted INTEGER NOT NULL DEFAULT 0)"),
+        QStringLiteral("CREATE TABLE IF NOT EXISTS places ("
+                       "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
+                       "latitude REAL NOT NULL, longitude REAL NOT NULL)"),
         QStringLiteral("CREATE TABLE IF NOT EXISTS locations ("
                        "id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL, "
                        "latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy REAL, "
@@ -174,6 +177,47 @@ bool AppStore::consented() const
             || confirmation == QStringLiteral("1"));
 }
 
+QString AppStore::defaultUploadUrl()
+{
+    return QStringLiteral("https://arts.st-andrews.ac.uk/sifids/");
+}
+
+bool AppStore::uploadEnabled() const
+{
+    return settings().value(QStringLiteral("upload_enabled")).toString()
+        == QStringLiteral("true");
+}
+
+QString AppStore::uploadUrl() const
+{
+    const QString saved = settings().value(QStringLiteral("upload_url")).toString().trimmed();
+    if (saved.isEmpty())
+        return defaultUploadUrl();
+    const QUrl url(saved);
+    const QString scheme = url.scheme().toLower();
+    if (!url.isValid() || url.host().isEmpty()
+        || (scheme != QStringLiteral("http") && scheme != QStringLiteral("https")))
+        return QString();
+    return saved;
+}
+
+bool AppStore::uploadAllowed()
+{
+    if (!uploadEnabled()) {
+        setStatus(tr("Uploads are turned off in Settings."));
+        return false;
+    }
+    if (!consented()) {
+        setStatus(tr("Complete participant consent in Settings before uploading."));
+        return false;
+    }
+    if (uploadUrl().isEmpty()) {
+        setStatus(tr("The upload URL in Settings is not a valid http(s) address."));
+        return false;
+    }
+    return true;
+}
+
 QVariantList AppStore::queryRows(const QString &sql) const
 {
     QVariantList result;
@@ -204,6 +248,11 @@ QVariantList AppStore::forms() const
 QVariantList AppStore::observations() const
 {
     return queryRows(QStringLiteral("SELECT * FROM observations ORDER BY timestamp DESC"));
+}
+
+QVariantList AppStore::places() const
+{
+    return queryRows(QStringLiteral("SELECT * FROM places ORDER BY name COLLATE NOCASE"));
 }
 
 QVariantList AppStore::locations() const
@@ -459,6 +508,40 @@ bool AppStore::deleteObservation(int observationId)
     }
     emit dataChanged();
     setStatus(tr("Observation deleted."));
+    return true;
+}
+
+int AppStore::savePlace(const QString &name, double latitude, double longitude)
+{
+    const QString trimmed = name.trimmed();
+    if (trimmed.isEmpty()) {
+        setStatus(tr("Enter a name for the place."));
+        return -1;
+    }
+    QSqlQuery query(*m_database);
+    query.prepare(QStringLiteral("INSERT INTO places(name, latitude, longitude) VALUES(?, ?, ?)"));
+    query.addBindValue(trimmed);
+    query.addBindValue(latitude);
+    query.addBindValue(longitude);
+    if (!query.exec()) {
+        setStatus(tr("Could not save place: %1").arg(query.lastError().text()));
+        return -1;
+    }
+    emit placesChanged();
+    setStatus(tr("Place saved."));
+    return query.lastInsertId().toInt();
+}
+
+bool AppStore::deletePlace(int placeId)
+{
+    QSqlQuery query(*m_database);
+    query.prepare(QStringLiteral("DELETE FROM places WHERE id = ?"));
+    query.addBindValue(placeId);
+    if (!query.exec()) {
+        setStatus(tr("Could not delete place: %1").arg(query.lastError().text()));
+        return false;
+    }
+    emit placesChanged();
     return true;
 }
 
@@ -828,10 +911,8 @@ void AppStore::uploadPending(const QString &vesselPln)
         setStatus(tr("An upload is already in progress."));
         return;
     }
-    if (!consented()) {
-        setStatus(tr("Complete participant consent in Settings before uploading."));
+    if (!uploadAllowed())
         return;
-    }
     if (vesselPln.trimmed().isEmpty()) {
         setStatus(tr("Set the vessel PLN in Settings before uploading."));
         return;
@@ -891,7 +972,7 @@ void AppStore::uploadPending(const QString &vesselPln)
     emit uploadingChanged();
     setStatus(tr("Uploading pending data…"));
 
-    const QUrl endpoint(QStringLiteral("https://arts.st-andrews.ac.uk/sifids/"));
+    const QUrl endpoint(uploadUrl());
     if (!locationIds.isEmpty()) {
         auto *multipart = new QHttpMultiPart(QHttpMultiPart::FormDataType);
         QHttpPart vesselPart;
@@ -1001,10 +1082,8 @@ void AppStore::uploadFormCsv(int formId, const QString &vesselPln)
         setStatus(tr("An upload is already in progress."));
         return;
     }
-    if (!consented()) {
-        setStatus(tr("Complete participant consent in Settings before uploading."));
+    if (!uploadAllowed())
         return;
-    }
     if (vesselPln.trimmed().isEmpty()) {
         setStatus(tr("Set the vessel PLN in Settings before uploading."));
         return;
@@ -1040,7 +1119,7 @@ void AppStore::uploadFormCsv(int formId, const QString &vesselPln)
     emit uploadingChanged();
     setStatus(tr("Uploading FISH1 form…"));
 
-    QNetworkRequest request(QUrl(QStringLiteral("https://arts.st-andrews.ac.uk/sifids/")));
+    QNetworkRequest request{QUrl(uploadUrl())};
     QNetworkReply *reply = m_network->post(request, multipart);
     multipart->setParent(reply);
     connect(reply, &QNetworkReply::finished, this, [this, reply] {

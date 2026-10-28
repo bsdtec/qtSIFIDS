@@ -16,6 +16,8 @@ class LocationTracker : public QObject
     Q_PROPERTY(double latitude READ latitude NOTIFY positionChanged)
     Q_PROPERTY(double longitude READ longitude NOTIFY positionChanged)
     Q_PROPERTY(double accuracy READ accuracy NOTIFY positionChanged)
+    Q_PROPERTY(bool hasDirection READ hasDirection NOTIFY positionChanged)
+    Q_PROPERTY(double direction READ direction NOTIFY positionChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
 
 public:
@@ -29,6 +31,8 @@ public:
     double latitude() const;
     double longitude() const;
     double accuracy() const;
+    bool hasDirection() const;
+    double direction() const;
     QString status() const;
 
 signals:
@@ -48,5 +52,7 @@ private:
     double m_latitude = 0.0;
     double m_longitude = 0.0;
     double m_accuracy = 0.0;
+    bool m_hasDirection = false;
+    double m_direction = 0.0;
     QString m_status;
 };
