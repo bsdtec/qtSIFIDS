@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QList>
 #include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
@@ -20,6 +21,10 @@ class LocationTracker : public QObject
     Q_PROPERTY(bool hasDirection READ hasDirection NOTIFY positionChanged)
     Q_PROPERTY(double direction READ direction NOTIFY positionChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    Q_PROPERTY(bool hasMotion READ hasMotion NOTIFY positionChanged)
+    Q_PROPERTY(double speedKnots READ speedKnots NOTIFY positionChanged)
+    Q_PROPERTY(bool hasCourse READ hasCourse NOTIFY positionChanged)
+    Q_PROPERTY(double courseDegrees READ courseDegrees NOTIFY positionChanged)
     Q_PROPERTY(bool simulatorAvailable READ simulatorAvailable CONSTANT)
     Q_PROPERTY(bool simulating READ simulating NOTIFY simulationChanged)
     Q_PROPERTY(double simHeading READ simHeading NOTIFY simulationChanged)
@@ -39,6 +44,11 @@ public:
     bool hasDirection() const;
     double direction() const;
     QString status() const;
+
+    bool hasMotion() const;
+    double speedKnots() const;
+    bool hasCourse() const;
+    double courseDegrees() const;
 
     bool simulatorAvailable() const;
     bool simulating() const;
@@ -71,6 +81,19 @@ private:
     QString m_status;
 
     void advanceSimulation();
+    void recordSample(double latitude, double longitude, qint64 timestamp);
+    void resetMotion();
+
+    struct Sample {
+        qint64 timestamp;
+        double latitude;
+        double longitude;
+    };
+    QList<Sample> m_samples;
+    bool m_hasMotion = false;
+    double m_speedKnots = 0.0;
+    bool m_hasCourse = false;
+    double m_courseDegrees = 0.0;
 
     QTimer m_simTimer;
     bool m_simulating = false;

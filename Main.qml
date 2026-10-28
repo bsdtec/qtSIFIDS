@@ -804,6 +804,37 @@ ApplicationWindow {
             }
 
             Rectangle {
+                anchors.left: parent.left
+                anchors.top: parent.top
+                anchors.margins: 10
+                visible: locationTracker.tracking && locationTracker.hasPosition
+                width: osdColumn.implicitWidth + 20
+                height: osdColumn.implicitHeight + 12
+                radius: 8
+                color: window.dark ? "#cc1c2421" : "#ccffffff"
+                border.color: window.cardBorder
+
+                Column {
+                    id: osdColumn
+                    anchors.centerIn: parent
+                    spacing: 2
+                    Label {
+                        text: qsTr("SOG  %1 kts").arg(locationTracker.hasMotion
+                                                       ? locationTracker.speedKnots.toFixed(1) : "--")
+                        font.pixelSize: 18
+                        font.bold: true
+                    }
+                    Label {
+                        text: qsTr("COG  %1°").arg(locationTracker.hasCourse
+                                                    ? Math.round(locationTracker.courseDegrees).toString().padStart(3, "0")
+                                                    : "---")
+                        font.pixelSize: 18
+                        font.bold: true
+                    }
+                }
+            }
+
+            Rectangle {
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.margins: 10
