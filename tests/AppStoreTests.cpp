@@ -137,6 +137,39 @@ private slots:
         QVERIFY(contents.contains("56.100000,-2.800000,5,Yes"));
     }
 
+    void mapPinsFollowTheirRecords()
+    {
+        AppStore store;
+        const int formId = store.saveForm({{QStringLiteral("pln"), QStringLiteral("PIN1")}});
+        QVERIFY(formId > 0);
+        QVERIFY(store.mapPins().isEmpty());
+
+        const int pinnedRow = store.saveFormRow({
+            {QStringLiteral("form_id"), formId},
+            {QStringLiteral("latitude"), 56.1}, {QStringLiteral("longitude"), -2.7},
+            {QStringLiteral("on_map"), 1}});
+        const int plainRow = store.saveFormRow({
+            {QStringLiteral("form_id"), formId},
+            {QStringLiteral("latitude"), 56.2}, {QStringLiteral("longitude"), -2.8}});
+        const int pinnedObservation = store.saveObservation({
+            {QStringLiteral("animal"), QStringLiteral("Seal")},
+            {QStringLiteral("latitude"), 56.3}, {QStringLiteral("longitude"), -2.9},
+            {QStringLiteral("on_map"), true}});
+        QVERIFY(pinnedRow > 0 && plainRow > 0 && pinnedObservation > 0);
+        QCOMPARE(store.mapPins().size(), 2);
+
+        // Editing without an on_map value keeps the pin.
+        QVERIFY(store.saveFormRow({
+            {QStringLiteral("id"), pinnedRow}, {QStringLiteral("form_id"), formId},
+            {QStringLiteral("latitude"), 56.15}, {QStringLiteral("longitude"), -2.7}}) > 0);
+        QCOMPARE(store.mapPins().size(), 2);
+
+        QVERIFY(store.deleteObservation(pinnedObservation));
+        QCOMPARE(store.mapPins().size(), 1);
+        QVERIFY(store.deleteForm(formId));
+        QVERIFY(store.mapPins().isEmpty());
+    }
+
     void importsRoomVersion15Database()
     {
         QTemporaryDir temporaryDirectory;

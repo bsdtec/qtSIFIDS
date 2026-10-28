@@ -16,6 +16,7 @@ class AppStore : public QObject
     Q_PROPERTY(QVariantList forms READ forms NOTIFY dataChanged)
     Q_PROPERTY(QVariantList observations READ observations NOTIFY dataChanged)
     Q_PROPERTY(QVariantList locations READ locations NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList mapPins READ mapPins NOTIFY dataChanged)
     Q_PROPERTY(QVariantList places READ places NOTIFY placesChanged)
     Q_PROPERTY(QVariantList ports READ ports CONSTANT)
     Q_PROPERTY(QVariantList gears READ gears CONSTANT)
@@ -36,6 +37,7 @@ public:
     QVariantList forms() const;
     QVariantList observations() const;
     QVariantList locations() const;
+    QVariantList mapPins() const;
     QVariantList places() const;
     QVariantList ports() const;
     QVariantList gears() const;

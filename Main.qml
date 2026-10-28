@@ -68,6 +68,53 @@ ApplicationWindow {
 
     // Fishing is only meaningful while tracking, so it resets when tracking stops.
     property bool fishing: false
+    property bool addMenuOpen: false
+
+    function showNotice(message) {
+        mapNoticeLabel.text = message
+        mapNoticeDialog.open()
+    }
+
+    // Active form: the one last opened from the forms tab, else the newest.
+    function activeFormForMap() {
+        const forms = appStore.forms
+        for (let i = 0; i < forms.length; ++i) {
+            if (forms[i].id === activeFormId)
+                return forms[i]
+        }
+        return forms.length > 0 ? forms[0] : null
+    }
+
+    function addFishRowFromMap() {
+        const form = activeFormForMap()
+        if (!form) {
+            showNotice(qsTr("Create a FISH1 form in the FISH1 forms tab first."))
+            return
+        }
+        if (!locationTracker.hasPosition) {
+            showNotice(qsTr("Waiting for a location fix before a pin can be dropped."))
+            return
+        }
+        activeFormId = form.id
+        activeFormTitle = form.pln || qsTr("FISH1 form")
+        rowDialog.rowId = 0
+        rowDialog.rowData = ({})
+        rowDialog.pinOnSave = true
+        rowDialog.open()
+    }
+
+    function addObservationFromMap() {
+        if (!appStore.consented) {
+            showNotice(qsTr("Complete the participant consent details in Settings before recording observations."))
+            return
+        }
+        if (!locationTracker.hasPosition) {
+            showNotice(qsTr("Waiting for a location fix before a pin can be dropped."))
+            return
+        }
+        observationDialog.pinOnSave = true
+        observationDialog.open()
+    }
 
     Connections {
         target: locationTracker
@@ -99,6 +146,33 @@ ApplicationWindow {
         }
         contentItem: Item {
             id: glyphHolder
+        }
+    }
+
+    component MapPin: Item {
+        property color pinColor: "#ff8c00"
+        property string letter: ""
+        width: 28
+        height: 40
+        Rectangle {
+            width: 14; height: 14
+            x: 7; y: 24
+            rotation: 45
+            color: parent.pinColor
+        }
+        Rectangle {
+            width: 28; height: 28
+            radius: 14
+            color: parent.pinColor
+            border.color: "white"
+            border.width: 2
+            Text {
+                anchors.centerIn: parent
+                text: parent.parent.letter
+                color: "white"
+                font.bold: true
+                font.pixelSize: 14
+            }
         }
     }
 
@@ -268,6 +342,20 @@ ApplicationWindow {
                     }
                 }
 
+                MapItemView {
+                    model: appStore.mapPins
+                    delegate: MapQuickItem {
+                        required property var modelData
+                        coordinate: QtPositioning.coordinate(modelData.latitude, modelData.longitude)
+                        anchorPoint.x: 14
+                        anchorPoint.y: 40
+                        sourceItem: MapPin {
+                            pinColor: modelData.kind === "row" ? "#ff8c00" : "#00838f"
+                            letter: modelData.kind === "row" ? "F" : "O"
+                        }
+                    }
+                }
+
                 MapQuickItem {
                     visible: sailPlan.hasDeparturePoint
                     coordinate: QtPositioning.coordinate(sailPlan.departureLatitude, sailPlan.departureLongitude)
@@ -393,11 +481,114 @@ ApplicationWindow {
             }
 
             Column {
+                visible: window.addMenuOpen
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 68
+                anchors.bottomMargin: 44
+                spacing: 10
+
+                MapButton {
+                    id: addObservationButton
+                    active: true
+                    activeColor: "#00838f"
+                    onClicked: window.addObservationFromMap()
+
+                    // Binoculars outline: two eyepieces over two barrels joined by a bridge.
+                    Item {
+                        anchors.centerIn: parent
+                        width: 24; height: 24
+                        Repeater {
+                            model: [1, 14]
+                            Item {
+                                required property int modelData
+                                Rectangle {
+                                    x: modelData + 1; y: 2
+                                    width: 7; height: 6
+                                    radius: 1.5
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: addObservationButton.glyphColor
+                                }
+                                Rectangle {
+                                    x: modelData; y: 8
+                                    width: 9; height: 14
+                                    radius: 4
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: addObservationButton.glyphColor
+                                }
+                            }
+                        }
+                        Rectangle {
+                            x: 9; y: 13
+                            width: 6; height: 2
+                            color: addObservationButton.glyphColor
+                        }
+                    }
+                }
+
+                MapButton {
+                    id: addFishButton
+                    active: true
+                    activeColor: "#ff8c00"
+                    onClicked: window.addFishRowFromMap()
+
+                    // Fish outline: body, tail and eye.
+                    Shape {
+                        anchors.centerIn: parent
+                        width: 26; height: 24
+                        preferredRendererType: Shape.CurveRenderer
+                        ShapePath {
+                            strokeColor: addFishButton.glyphColor
+                            strokeWidth: 2
+                            fillColor: "transparent"
+                            joinStyle: ShapePath.RoundJoin
+                            capStyle: ShapePath.RoundCap
+                            PathSvg { path: "M 2 12 Q 9 3 17 12 Q 9 21 2 12 Z M 17 12 L 24 6 L 24 18 Z" }
+                        }
+                        ShapePath {
+                            strokeColor: "transparent"
+                            fillColor: addFishButton.glyphColor
+                            PathSvg { path: "M 6 10 a 1.3 1.3 0 1 0 0.01 0 Z" }
+                        }
+                    }
+                }
+            }
+
+            Column {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 10
                 anchors.bottomMargin: 44
                 spacing: 10
+
+                MapButton {
+                    id: followButton
+                    visible: locationTracker.hasPosition && !map.following
+                    active: false
+                    activeColor: "#1976d2"
+                    onClicked: {
+                        map.following = true
+                        map.center = QtPositioning.coordinate(locationTracker.latitude,
+                                                              locationTracker.longitude)
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 22; height: 22
+                        radius: 11
+                        color: "transparent"
+                        border.width: 2
+                        border.color: followButton.glyphColor
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 8; height: 8
+                            radius: 4
+                            color: parent.border.color
+                        }
+                    }
+                }
 
                 MapButton {
                     id: sailButton
@@ -484,29 +675,18 @@ ApplicationWindow {
                 }
 
                 MapButton {
-                    id: followButton
-                    visible: locationTracker.hasPosition
-                    active: map.following
-                    activeColor: "#1976d2"
-                    onClicked: {
-                        map.following = true
-                        map.center = QtPositioning.coordinate(locationTracker.latitude,
-                                                              locationTracker.longitude)
-                    }
+                    id: addButton
+                    active: window.addMenuOpen
+                    activeColor: "#6a1b9a"
+                    onClicked: window.addMenuOpen = !window.addMenuOpen
 
-                    Rectangle {
+                    Item {
                         anchors.centerIn: parent
                         width: 22; height: 22
-                        radius: 11
-                        color: "transparent"
-                        border.width: 2
-                        border.color: followButton.glyphColor
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 8; height: 8
-                            radius: 4
-                            color: parent.border.color
-                        }
+                        rotation: window.addMenuOpen ? 45 : 0
+                        Behavior on rotation { NumberAnimation { duration: 120 } }
+                        Rectangle { anchors.centerIn: parent; width: 22; height: 3; radius: 1.5; color: addButton.glyphColor }
+                        Rectangle { anchors.centerIn: parent; width: 3; height: 22; radius: 1.5; color: addButton.glyphColor }
                     }
                 }
             }
@@ -924,6 +1104,21 @@ ApplicationWindow {
 
         contentItem: Label {
             text: appStore.status
+            font.pixelSize: 18
+            wrapMode: Text.Wrap
+        }
+    }
+
+    Dialog {
+        id: mapNoticeDialog
+        modal: true
+        title: qsTr("Notice")
+        standardButtons: Dialog.Ok
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 48, 420)
+
+        contentItem: Label {
+            id: mapNoticeLabel
             font.pixelSize: 18
             wrapMode: Text.Wrap
         }
@@ -1420,6 +1615,7 @@ ApplicationWindow {
         id: rowDialog
         property int rowId: 0
         property var rowData: ({})
+        property bool pinOnSave: false
         modal: true
         title: rowId ? qsTr("Edit FISH1 row") : qsTr("Add FISH1 row")
         standardButtons: Dialog.Save | Dialog.Cancel
@@ -1448,8 +1644,10 @@ ApplicationWindow {
             rowTransporter.text = rowData.transporter_reg_etc || ""
         }
 
+        onClosed: pinOnSave = false
+
         onAccepted: {
-            const saved = appStore.saveFormRow({
+            const row = {
                 id: rowId,
                 form_id: activeFormId,
                 fishing_activity_date: rowDate.text,
@@ -1467,9 +1665,15 @@ ApplicationWindow {
                 number_of_pots_hauled: Number(rowPots.text) || 0,
                 landing_or_discard_date: rowLanding.text,
                 transporter_reg_etc: rowTransporter.text
-            })
-            if (saved > 0)
+            }
+            if (pinOnSave)
+                row.on_map = 1
+            const saved = appStore.saveFormRow(row)
+            if (saved > 0) {
                 currentFormRows = appStore.rowsForForm(activeFormId)
+                if (pinOnSave)
+                    window.addMenuOpen = false
+            }
         }
 
         Flickable {
@@ -1515,6 +1719,7 @@ ApplicationWindow {
 
     Dialog {
         id: observationDialog
+        property bool pinOnSave: false
         modal: true
         title: qsTr("Record wildlife observation")
         standardButtons: Dialog.Save | Dialog.Cancel
@@ -1529,15 +1734,23 @@ ApplicationWindow {
             obsDate.text = new Date().toISOString()
         }
 
-        onAccepted: appStore.saveObservation({
-            animal: animalBox.currentText,
-            species: obsSpecies.text,
-            timestamp: Date.parse(obsDate.text) || Date.now(),
-            latitude: Number(obsLatitude.text) || 0,
-            longitude: Number(obsLongitude.text) || 0,
-            count: Number(obsCount.text) || 1,
-            notes: obsNotes.text
-        })
+        onClosed: pinOnSave = false
+
+        onAccepted: {
+            const observation = {
+                animal: animalBox.currentText,
+                species: obsSpecies.text,
+                timestamp: Date.parse(obsDate.text) || Date.now(),
+                latitude: Number(obsLatitude.text) || 0,
+                longitude: Number(obsLongitude.text) || 0,
+                count: Number(obsCount.text) || 1,
+                notes: obsNotes.text
+            }
+            if (pinOnSave)
+                observation.on_map = 1
+            if (appStore.saveObservation(observation) > 0 && pinOnSave)
+                window.addMenuOpen = false
+        }
 
         ColumnLayout {
             width: parent.width

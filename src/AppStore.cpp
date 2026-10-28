@@ -140,6 +140,20 @@ bool AppStore::initialize()
         if (!execute(statement))
             return false;
     }
+    // Records created from the map's + menu carry a pin; older databases lack the column.
+    for (const QString &table : {QStringLiteral("form_rows"), QStringLiteral("observations")}) {
+        QSqlQuery info(*m_database);
+        bool hasColumn = false;
+        if (info.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table))) {
+            while (info.next()) {
+                if (info.value(1).toString() == QStringLiteral("on_map"))
+                    hasColumn = true;
+            }
+        }
+        if (!hasColumn && !execute(QStringLiteral(
+                "ALTER TABLE %1 ADD COLUMN on_map INTEGER NOT NULL DEFAULT 0").arg(table)))
+            return false;
+    }
     setStatus(tr("Local data is ready."), false);
     return true;
 }
@@ -250,6 +264,15 @@ QVariantList AppStore::forms() const
 QVariantList AppStore::observations() const
 {
     return queryRows(QStringLiteral("SELECT * FROM observations ORDER BY timestamp DESC"));
+}
+
+QVariantList AppStore::mapPins() const
+{
+    return queryRows(QStringLiteral(
+        "SELECT 'row' AS kind, id, latitude, longitude, COALESCE(species, '') AS label "
+        "FROM form_rows WHERE on_map = 1 "
+        "UNION ALL "
+        "SELECT 'observation', id, latitude, longitude, animal FROM observations WHERE on_map = 1"));
 }
 
 QVariantList AppStore::places() const
@@ -395,9 +418,10 @@ int AppStore::saveFormRow(const QVariantMap &row)
         {QStringLiteral("weight"), 0.0},
         {QStringLiteral("dis"), false},
         {QStringLiteral("bms"), false},
-        {QStringLiteral("number_of_pots_hauled"), 0}
+        {QStringLiteral("number_of_pots_hauled"), 0},
+        {QStringLiteral("on_map"), 0}
     };
-    const QStringList columns{
+    QStringList columns{
         QStringLiteral("form_id"), QStringLiteral("fishing_activity_date"),
         QStringLiteral("latitude"), QStringLiteral("longitude"),
         QStringLiteral("ices_area"), QStringLiteral("gear"),
@@ -407,6 +431,8 @@ int AppStore::saveFormRow(const QVariantMap &row)
         QStringLiteral("number_of_pots_hauled"), QStringLiteral("landing_or_discard_date"),
         QStringLiteral("transporter_reg_etc")
     };
+    if (row.contains(QStringLiteral("on_map")))
+        columns.append(QStringLiteral("on_map"));
     const double latitude = row.value(QStringLiteral("latitude"), 0.0).toDouble();
     const double longitude = row.value(QStringLiteral("longitude"), 0.0).toDouble();
     if (row.value(QStringLiteral("form_id")).toInt() <= 0
@@ -473,13 +499,17 @@ int AppStore::saveObservation(const QVariantMap &observation)
     }
     QSqlQuery query(*m_database);
     const QVariant id = observation.value(QStringLiteral("id"));
-    if (id.isValid() && id.toInt() > 0) {
+    const bool update = id.isValid() && id.toInt() > 0;
+    const bool withPin = observation.contains(QStringLiteral("on_map"));
+    if (update) {
         query.prepare(QStringLiteral(
-            "UPDATE observations SET animal=?, species=?, timestamp=?, latitude=?, longitude=?, count=?, notes=? WHERE id=?"));
+            "UPDATE observations SET animal=?, species=?, timestamp=?, latitude=?, longitude=?, count=?, notes=?")
+            + (withPin ? QStringLiteral(", on_map=?") : QString()) + QStringLiteral(" WHERE id=?"));
     } else {
         query.prepare(QStringLiteral(
-            "INSERT INTO observations(animal, species, timestamp, latitude, longitude, count, notes) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?)"));
+            "INSERT INTO observations(animal, species, timestamp, latitude, longitude, count, notes")
+            + (withPin ? QStringLiteral(", on_map") : QString()) + QStringLiteral(") VALUES(?, ?, ?, ?, ?, ?, ?")
+            + (withPin ? QStringLiteral(", ?") : QString()) + QLatin1Char(')'));
     }
     query.addBindValue(observation.value(QStringLiteral("animal")));
     query.addBindValue(observation.value(QStringLiteral("species")));
@@ -488,7 +518,9 @@ int AppStore::saveObservation(const QVariantMap &observation)
     query.addBindValue(observation.value(QStringLiteral("longitude")));
     query.addBindValue(observation.value(QStringLiteral("count"), 1));
     query.addBindValue(observation.value(QStringLiteral("notes")));
-    if (id.isValid() && id.toInt() > 0)
+    if (withPin)
+        query.addBindValue(observation.value(QStringLiteral("on_map")).toBool() ? 1 : 0);
+    if (update)
         query.addBindValue(id);
     if (!query.exec()) {
         setStatus(tr("Could not save observation: %1").arg(query.lastError().text()));
